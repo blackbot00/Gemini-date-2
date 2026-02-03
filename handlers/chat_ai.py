@@ -9,7 +9,6 @@ from utils.keyboards import get_main_menu
 
 router = Router()
 
-# Updated Client with proper headers and successful model list
 client = openai.OpenAI(
     base_url="https://openrouter.ai/api/v1", 
     api_key=OPENROUTER_KEY,
@@ -19,11 +18,11 @@ client = openai.OpenAI(
     }
 )
 
-# Screenshot-la work aana GPT-4o-Mini model-ah mela vechurukaen
+# Gemini-ah primary-ah vechurukaen. Oru valai Gemini busy-ah iruntha GPT-4o-mini backup-ah work aagum.
 MODELS = [
-    "openai/gpt-4o-mini", 
-    "google/gemini-2.0-flash-lite-preview-02-05:free",
-    "meta-llama/llama-3.2-3b-instruct:free"
+    "google/gemini-2.0-flash-lite-preview-02-05:free", # Primary: Gemini
+    "openai/gpt-4o-mini",                            # Backup 1
+    "google/gemini-2.0-pro-exp-02-05:free"           # Backup 2
 ]
 
 @router.callback_query(F.data == "chat_ai")
@@ -83,16 +82,13 @@ async def handle_ai_msg(message: types.Message, state: FSMContext):
     
     await message.bot.send_chat_action(message.chat.id, "typing")
 
-    system_content = f"You are a human {ai_role}. Personality: {data.get('ai_type')}. Language: {data.get('ai_lang')}."
+    system_content = f"You are a human {ai_role}. Personality: {data.get('ai_type')}. Language: {data.get('ai_lang')}. Be concise and very romantic."
     if data.get('ai_type') == "18":
         system_content += " Act bold and use explicit adult romantic language."
 
     ai_reply = None
-    last_error = ""
-
     for model_id in MODELS:
         try:
-            print(f"DEBUG: Trying {model_id}...")
             response = client.chat.completions.create(
                 model=model_id,
                 messages=[
@@ -102,9 +98,10 @@ async def handle_ai_msg(message: types.Message, state: FSMContext):
                 timeout=15
             )
             ai_reply = response.choices[0].message.content
-            if ai_reply: break
+            if ai_reply: 
+                print(f"DEBUG: Reply from {model_id}")
+                break
         except Exception as e:
-            last_error = str(e)
             print(f"DEBUG: {model_id} failed: {e}")
             continue
 
@@ -112,16 +109,10 @@ async def handle_ai_msg(message: types.Message, state: FSMContext):
         await message.answer(ai_reply)
         await message.bot.send_message(LOG_GROUP_2, f"🤖 AI Log:\nUser: {message.text}\nAI: {ai_reply}")
     else:
-        # User-ku innum clear-aana error kaattum
-        if "402" in last_error or "credits" in last_error.lower():
-             await message.answer("❌ **Insufficient Balance:** OpenRouter account-la credits kaali aiyiduchi. Konjam top-up pannunga.")
-        elif "401" in last_error:
-             await message.answer("❌ **API Key Error:** Neenga kuduthurukka Key ippo intha account-oda thodarbu illa. Puthu Key generate pannunga.")
-        else:
-             await message.answer(f"⚠️ **Error:** {last_error[:50]}...\nPlease check your OpenRouter dashboard for activity.")
+        await message.answer("⚠️ AI connection error. Please try again.")
 
 @router.callback_query(F.data == "exit_ai")
 async def exit_ai_btn(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.message.edit_text("AI Chat stopped.", reply_markup=get_main_menu())
-                                    
+    
