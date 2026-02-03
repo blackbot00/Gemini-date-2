@@ -33,6 +33,7 @@ dp = Dispatcher()
 
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
+    await state.clear() # Reset any stuck states
     user = await db.users.find_one({"user_id": message.from_user.id})
     if not user:
         await bot.send_message(LOG_GROUP_1, f"🆕 New User Started: {message.from_user.full_name}")
@@ -42,17 +43,19 @@ async def cmd_start(message: types.Message, state: FSMContext):
     else:
         await message.answer(f"Welcome back, {user['name']}! ❤️", reply_markup=keyboards.get_main_menu())
 
-@dp.callback_query(F.data == "exit_chat")
-async def global_exit(callback: types.CallbackQuery, state: FSMContext):
-    await db.users.update_one({"user_id": callback.from_user.id}, {"$set": {"status": "idle"}})
-    await state.clear()
-    await callback.message.edit_text("Chat ended. Choose again:", reply_markup=keyboards.get_main_menu())
-
 async def main():
-    asyncio.create_task(start_health_server()) # Starts the 8000 port server
-    dp.include_routers(registration.router, human_chat.router, chat_ai.router, common.router)
+    asyncio.create_task(start_health_server()) 
+    
+    # IMPORTANT: chat_ai MUST come FIRST to catch AI messages before registration/human chat
+    dp.include_router(chat_ai.router)
+    dp.include_router(common.router)
+    dp.include_router(human_chat.router)
+    dp.include_router(registration.router)
+    
     print("🚀 Bot is live on Koyeb!")
-    await dp.start_polling(bot)
+    # skip_updates ensures old stuck messages don't break the current session
+    await dp.start_polling(bot, skip_updates=True)
 
 if __name__ == "__main__":
     asyncio.run(main())
+        
