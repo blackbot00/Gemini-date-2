@@ -1,25 +1,27 @@
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from aiogram.types import InlineKeyboardButton
+from aiogram import types
 
 def get_state_keyboard():
     builder = InlineKeyboardBuilder()
-    states = ["Tamil Nadu", "Kerala", "Karnataka", "Mumbai", "Delhi", "Others"] # Add more
-    for s in states:
-        builder.add(InlineKeyboardButton(text=s, callback_data=f"reg_state_{s}"))
+    states = [
+        "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh", 
+        "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand", 
+        "Karnataka", "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur", 
+        "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Punjab", "Rajasthan", 
+        "Sikkim", "Tamil Nadu", "Telangana", "Tripura", "Uttar Pradesh", 
+        "Uttarakhand", "West Bengal"
+    ]
+    for state in states:
+        builder.add(types.InlineKeyboardButton(text=state, callback_data=f"regstate_{state}"))
     builder.adjust(3)
     return builder.as_markup()
 
 def get_main_menu():
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="👤 Human Chat", callback_data="chat_human"),
-                InlineKeyboardButton(text="🤖 AI Chat", callback_data="chat_ai"))
-    builder.row(InlineKeyboardButton(text="💎 Get Premium", callback_data="go_premium"))
-    return builder.as_markup()
-
-def get_ai_lang_kb():
-    builder = InlineKeyboardBuilder()
-    langs = ["Tamil", "English", "Hindi", "Telugu", "Tanglish"]
-    for l in langs:
-        builder.add(InlineKeyboardButton(text=l, callback_data=f"ai_lang_{l}"))
-    builder.adjust(2)
+    builder.row(types.InlineKeyboardButton(text="👫 Chat with Human", callback_data="chat_human"))
+    builder.row(types.InlineKeyboardButton(text="🤖 Chat with AI", callback_data="chat_ai"))
+    builder.row(
+        types.InlineKeyboardButton(text="👤 Profile", callback_data="view_profile"),
+        types.InlineKeyboardButton(text="💎 Premium", callback_data="go_premium")
+    )
     return builder.as_markup()
