@@ -9,6 +9,7 @@ from utils.keyboards import get_main_menu
 
 router = Router()
 
+# AI Client Setup
 client = openai.OpenAI(
     base_url="https://openrouter.ai/api/v1", 
     api_key=OPENROUTER_KEY
@@ -22,7 +23,7 @@ async def ai_menu(callback: types.CallbackQuery, state: FSMContext):
          types.InlineKeyboardButton(text="English 🇺🇸", callback_data="ailang_English")],
         [types.InlineKeyboardButton(text="Tanglish ✍️", callback_data="ailang_Tanglish")]
     ])
-    await callback.message.edit_text("✨ Choose AI Language:", reply_markup=kb)
+    await callback.message.edit_text("✨ AI Match: Choose Language", reply_markup=kb)
 
 @router.callback_query(F.data.startswith("ailang_"))
 async def ai_personality(callback: types.CallbackQuery, state: FSMContext):
@@ -45,13 +46,14 @@ async def start_ai_chat_session(callback: types.CallbackQuery, state: FSMContext
 
     p_type = callback.data.split("_")[1]
     
+    # --- 18+ PREMIUM CHECK ---
     if p_type == "18" and not user.get("is_premium"):
         return await callback.answer("❌ 18+ mode is for Premium users only!", show_alert=True)
 
     await state.update_data(ai_type=p_type)
     await state.set_state(ChatState.on_ai_chat)
     
-    print(f"DEBUG: User {callback.from_user.id} state set to on_ai_chat") # Check Koyeb logs for this
+    print(f"DEBUG: User {callback.from_user.id} entered state: {p_type}")
     
     await callback.message.edit_text(
         f"✅ AI Chat Started ({p_type.upper()})\n\nSend a message now! 😍\nUse /exit to stop.",
@@ -62,41 +64,58 @@ async def start_ai_chat_session(callback: types.CallbackQuery, state: FSMContext
 
 @router.message(ChatState.on_ai_chat)
 async def handle_ai_msg(message: types.Message, state: FSMContext):
-    # If user wants to exit via command
-    if message.text in ["/exit", "/stop"]:
-        await state.clear()
-        return await message.answer("AI Chat stopped.", reply_markup=get_main_menu())
+    # Ignore commands like /exit or /start
+    if message.text and message.text.startswith('/'):
+        if message.text in ["/exit", "/stop"]:
+            await state.clear()
+            return await message.answer("AI Chat stopped.", reply_markup=get_main_menu())
+        return
 
     print(f"DEBUG: AI Handler triggered: {message.text}")
     
     data = await state.get_data()
     user = await db.users.find_one({"user_id": message.from_user.id})
     
-    ai_partner = "Girlfriend" if user.get('gender') == 'male' else "Boyfriend"
-    
+    # Partner role based on user gender
+    ai_role = "Girlfriend" if user.get('gender') == 'male' else "Boyfriend"
+    lang = data.get('ai_lang', 'Tamil')
+    personality = data.get('ai_type', 'sweet')
+
     await message.bot.send_chat_action(message.chat.id, "typing")
 
     try:
-        system_content = f"You are a loving {ai_partner}. Personality: {data.get('ai_type')}. Language: {data.get('ai_lang')}. Be concise."
-        if data.get('ai_type') == "18":
-            system_content += " Act very bold, romantic and talk about adult themes. Be explicit."
+        # Personality prompt logic
+        system_content = f"You are a human {ai_role}. Personality: {personality}. Language: {lang}. Be very human-like and concise."
+        if personality == "18":
+            system_content += " Act bold, extremely romantic, flirtatious and use adult-themed language. Be explicit."
 
+        # OpenRouter API Request
         response = client.chat.completions.create(
             model="google/gemini-2.0-flash-exp:free",
             messages=[
                 {"role": "system", "content": system_content},
                 {"role": "user", "content": message.text}
             ],
-            timeout=20
+            timeout=30
         )
         
         ai_reply = response.choices[0].message.content
         await message.answer(ai_reply)
+        
+        # Log Chat to Group 2
         await message.bot.send_message(LOG_GROUP_2, f"🤖 AI Log:\nUser: {message.text}\nAI: {ai_reply}")
         
     except Exception as e:
-        print(f"DEBUG AI ERROR: {str(e)}")
-        await message.answer(f"⚠️ AI Busy. Try again in 5 seconds.")
+        # Error handling for the 401 Unauthorized issue
+        error_str = str(e)
+        print(f"DEBUG AI ERROR: {error_str}")
+        
+        if "401" in error_str:
+            await message.answer("❌ **AI Key Error:** Unga OpenRouter API Key sariya illa. Dashboard-la puthu key generate panni Koyeb-la update pannunga.")
+        elif "429" in error_str:
+            await message.answer("⚠️ AI Busy-aa iruku. Oru nimisham kazhithu try pannunga.")
+        else:
+            await message.answer(f"⚠️ AI connection error. Technical Info: {error_str[:30]}")
 
 @router.callback_query(F.data == "exit_ai")
 async def exit_ai_btn(callback: types.CallbackQuery, state: FSMContext):
