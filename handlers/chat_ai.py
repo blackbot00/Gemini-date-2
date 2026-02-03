@@ -9,22 +9,21 @@ from utils.keyboards import get_main_menu
 
 router = Router()
 
-# Headers add panrathu romba mukkiyam OpenRouter-ku
+# Updated Client with proper headers and successful model list
 client = openai.OpenAI(
     base_url="https://openrouter.ai/api/v1", 
     api_key=OPENROUTER_KEY,
     default_headers={
-        "HTTP-Referer": "https://koyeb.com", # Koyeb-la irunthu varuthunu solrom
+        "HTTP-Referer": "https://koyeb.com",
         "X-Title": "CoupleDatingBot",
     }
 )
 
-# Ippo stable-ah irukura models list
+# Screenshot-la work aana GPT-4o-Mini model-ah mela vechurukaen
 MODELS = [
+    "openai/gpt-4o-mini", 
     "google/gemini-2.0-flash-lite-preview-02-05:free",
-    "meta-llama/llama-3.2-3b-instruct:free",
-    "mistralai/mistral-7b-instruct:free",
-    "openchat/openchat-7b:free"
+    "meta-llama/llama-3.2-3b-instruct:free"
 ]
 
 @router.callback_query(F.data == "chat_ai")
@@ -84,12 +83,13 @@ async def handle_ai_msg(message: types.Message, state: FSMContext):
     
     await message.bot.send_chat_action(message.chat.id, "typing")
 
-    system_content = f"You are a human {ai_role}. Personality: {data.get('ai_type')}. Language: {data.get('ai_lang')}. Concise."
+    system_content = f"You are a human {ai_role}. Personality: {data.get('ai_type')}. Language: {data.get('ai_lang')}."
     if data.get('ai_type') == "18":
         system_content += " Act bold and use explicit adult romantic language."
 
     ai_reply = None
-    # Model switching logic
+    last_error = ""
+
     for model_id in MODELS:
         try:
             print(f"DEBUG: Trying {model_id}...")
@@ -104,6 +104,7 @@ async def handle_ai_msg(message: types.Message, state: FSMContext):
             ai_reply = response.choices[0].message.content
             if ai_reply: break
         except Exception as e:
+            last_error = str(e)
             print(f"DEBUG: {model_id} failed: {e}")
             continue
 
@@ -111,10 +112,16 @@ async def handle_ai_msg(message: types.Message, state: FSMContext):
         await message.answer(ai_reply)
         await message.bot.send_message(LOG_GROUP_2, f"🤖 AI Log:\nUser: {message.text}\nAI: {ai_reply}")
     else:
-        await message.answer("⚠️ System overloaded. Please check if your OpenRouter Key has balance or permissions.")
+        # User-ku innum clear-aana error kaattum
+        if "402" in last_error or "credits" in last_error.lower():
+             await message.answer("❌ **Insufficient Balance:** OpenRouter account-la credits kaali aiyiduchi. Konjam top-up pannunga.")
+        elif "401" in last_error:
+             await message.answer("❌ **API Key Error:** Neenga kuduthurukka Key ippo intha account-oda thodarbu illa. Puthu Key generate pannunga.")
+        else:
+             await message.answer(f"⚠️ **Error:** {last_error[:50]}...\nPlease check your OpenRouter dashboard for activity.")
 
 @router.callback_query(F.data == "exit_ai")
 async def exit_ai_btn(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.message.edit_text("AI Chat stopped.", reply_markup=get_main_menu())
-    
+                                    
