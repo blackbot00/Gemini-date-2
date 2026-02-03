@@ -3,6 +3,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from database import db
 from utils.keyboards import get_main_menu
+from utils.payment import create_cashfree_order # Import matching the function above
 
 router = Router()
 
@@ -10,10 +11,10 @@ router = Router()
 async def cmd_privacy(message: types.Message):
     privacy_text = (
         "🔐 **Privacy Policy**\n\n"
-        "1️⃣ 🛡️ Safety First — We take user safety seriously.\n"
+        "1️⃣ 🛡️ Safety First — User safety is our priority.\n"
         "2️⃣ 😇 Don't be Misbehave — Respect others.\n"
-        "3️⃣ 🚫 No Personal Info — Never share phone/address.\n"
-        "4️⃣ 🚩 Report Option — Use Report button for abuse."
+        "3️⃣ 🚫 No Personal Info — Don't share private data.\n"
+        "4️⃣ 🚩 Report Option — Use Report button if needed."
     )
     await message.answer(privacy_text)
 
@@ -25,9 +26,8 @@ async def show_premium(event: types.Message | types.CallbackQuery):
         "━━━━━━━━━━━━━━\n"
         "• Unlimited AI Chats\n"
         "• 18+ Romantic AI Mode\n"
-        "• Filter partners by Gender\n"
-        "• Priority Connection\n\n"
-        "🎟 **Select a plan to continue:**"
+        "• Filter partners by Gender\n\n"
+        "🎟 **Select a plan to pay via UPI/Card:**"
     )
     kb = types.InlineKeyboardMarkup(inline_keyboard=[
         [types.InlineKeyboardButton(text="1 Week - ₹29", callback_data="buy_29")],
@@ -44,20 +44,37 @@ async def show_premium(event: types.Message | types.CallbackQuery):
 @router.callback_query(F.data.startswith("buy_"))
 async def process_buy_button(callback: types.CallbackQuery):
     amount = callback.data.split("_")[1]
-    # Inga thaan Cashfree link create panna vendum. 
-    # For now confirmation message:
-    await callback.answer(f"Processing ₹{amount} plan...", show_alert=False)
+    user_id = callback.from_user.id
     
-    pay_kb = types.InlineKeyboardMarkup(inline_keyboard=[
-        [types.InlineKeyboardButton(text="💳 Pay Now", url="https://t.me/your_admin_username")], # Replace with real link later
-        [types.InlineKeyboardButton(text="🔙 Back", callback_data="go_premium")]
-    ])
-    
-    await callback.message.edit_text(
-        f"💎 **Premium Plan: ₹{amount}**\n\n"
-        "Click the button below to pay via UPI or Card. Once payment is done, send the screenshot to Admin.",
-        reply_markup=pay_kb
-    )
+    # User name for Cashfree
+    user_data = await db.users.find_one({"user_id": user_id})
+    name = user_data.get("name", "User") if user_data else "User"
+
+    await callback.message.edit_text(f"⏳ Generating secure payment link for ₹{amount}...")
+
+    # Generate real session from Cashfree
+    session_id, order_id = await create_cashfree_order(user_id, amount, name)
+
+    if session_id:
+        # Construct the official Checkout URL
+        checkout_url = f"https://payments.cashfree.com/order/#/{session_id}"
+        
+        pay_kb = types.InlineKeyboardMarkup(inline_keyboard=[
+            [types.InlineKeyboardButton(text="💳 Pay Now (UPI/Card)", url=checkout_url)],
+            [types.InlineKeyboardButton(text="🔙 Back", callback_data="go_premium")]
+        ])
+        
+        await callback.message.edit_text(
+            f"✅ **Order Generated!**\n\nPlan: ₹{amount}\nOrder ID: `{order_id}`\n\nClick below to complete the payment. After payment, your premium will be active soon.",
+            reply_markup=pay_kb
+        )
+    else:
+        await callback.message.edit_text(
+            "❌ **Gateway Error!**\n\nCould not generate payment link. Please try again later or contact Admin.",
+            reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
+                [types.InlineKeyboardButton(text="🔙 Back", callback_data="go_premium")]
+            ])
+        )
 
 @router.callback_query(F.data == "main_menu")
 async def back_to_main(callback: types.CallbackQuery, state: FSMContext):
