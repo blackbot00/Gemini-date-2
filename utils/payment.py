@@ -4,7 +4,7 @@ import logging
 from config import CASHFREE_APP_ID, CASHFREE_SECRET_KEY
 
 # Real Payment API
-BASE_URL = "https://api.cashfree.com/pg/orders" 
+BASE_URL = "https://sandbox.cashfree.com/pg/orders" 
 
 async def create_cashfree_order(user_id, amount, customer_name="User"):
     # Unique Order ID generation
