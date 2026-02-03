@@ -1,19 +1,43 @@
-import requests
+import httpx
+import uuid
+from config import CASHFREE_APP_ID, CASHFREE_SECRET_KEY
 
-def create_cashfree_order(user_id, amount):
-    # Cashfree API integration logic
-    # Amount logic: 1 week = 29, 1 month = 79, 3 month = 149
-    url = "https://sandbox.cashfree.com/pg/orders" # Use production URL for live
+# PROD URL: https://api.cashfree.com/pg/orders
+# SANDBOX URL: https://sandbox.cashfree.com/pg/orders
+BASE_URL = "https://api.cashfree.com/pg/orders" 
+
+async def create_cashfree_order(user_id, amount, customer_name="User"):
+    order_id = f"ORDER_{user_id}_{uuid.uuid4().hex[:5]}"
+    
     headers = {
-        "x-client-id": "YOUR_ID",
-        "x-client-secret": "YOUR_SECRET",
-        "x-api-version": "2022-09-01"
+        "x-client-id": CASHFREE_APP_ID,
+        "x-client-secret": CASHFREE_SECRET_KEY,
+        "x-api-version": "2023-08-01",
+        "Content-Type": "application/json"
     }
-    payload = {
-        "order_id": f"order_{user_id}_{amount}",
-        "order_amount": amount,
-        "order_currency": "INR",
-        "customer_details": {"customer_id": str(user_id), "customer_phone": "9999999999"}
-    }
-    # Return payment link to bot
 
+    payload = {
+        "order_id": order_id,
+        "order_amount": float(amount),
+        "order_currency": "INR",
+        "customer_details": {
+            "customer_id": str(user_id),
+            "customer_phone": "9999999999", # Required field
+            "customer_name": customer_name
+        }
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(BASE_URL, json=payload, headers=headers)
+            if response.status_code == 200:
+                data = response.json()
+                # session_id thaan checkout page generate panna venum
+                return data.get("payment_session_id"), order_id
+            else:
+                print(f"Cashfree Error: {response.text}")
+                return None, None
+        except Exception as e:
+            print(f"Connection Error: {e}")
+            return None, None
+                
