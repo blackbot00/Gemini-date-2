@@ -8,7 +8,7 @@ from utils.states import ChatState
 
 router = Router()
 
-# API Client setup
+# AI Client setup
 client = openai.OpenAI(
     base_url="https://openrouter.ai/api/v1", 
     api_key=OPENROUTER_KEY
@@ -16,6 +16,7 @@ client = openai.OpenAI(
 
 @router.callback_query(F.data == "chat_ai")
 async def ai_menu(callback: types.CallbackQuery, state: FSMContext):
+    await state.clear() # Clear any previous states
     kb = types.InlineKeyboardMarkup(inline_keyboard=[
         [types.InlineKeyboardButton(text="Tamil 🇮🇳", callback_data="ailang_Tamil"),
          types.InlineKeyboardButton(text="English 🇺🇸", callback_data="ailang_English")],
@@ -44,12 +45,16 @@ async def start_ai_chat_session(callback: types.CallbackQuery, state: FSMContext
 
     p_type = callback.data.split("_")[1]
     
-    # --- PREMIUM CHECK FOR 18+ ---
+    # --- 18+ PREMIUM CHECK ---
     if p_type == "18" and not user.get("is_premium"):
         return await callback.answer("❌ 18+ mode is for Premium users only!", show_alert=True)
 
     await state.update_data(ai_type=p_type)
+    
+    # STATE SETTING IS CRITICAL HERE
     await state.set_state(ChatState.on_ai_chat)
+    
+    print(f"DEBUG: User {callback.from_user.id} entered AI Chat state: {p_type}")
     
     await callback.message.edit_text(
         f"✅ AI Chat Started ({p_type.upper()})\nSend a message now! 😍\nUse /exit to stop.",
@@ -58,12 +63,13 @@ async def start_ai_chat_session(callback: types.CallbackQuery, state: FSMContext
         ])
     )
 
-@router.message(ChatState.on_ai_chat, F.text)
+@router.message(ChatState.on_ai_chat)
 async def handle_ai_msg(message: types.Message, state: FSMContext):
-    if message.text.startswith('/'): return 
+    # Log every message that hits this handler
+    print(f"DEBUG: AI Handler triggered by {message.from_user.id}: {message.text}")
     
-    # DEBUG: Check if message reaches here
-    print(f"DEBUG: Received message from {message.from_user.id}: {message.text}")
+    if not message.text or message.text.startswith('/'): 
+        return 
     
     data = await state.get_data()
     user = await db.users.find_one({"user_id": message.from_user.id})
@@ -73,44 +79,30 @@ async def handle_ai_msg(message: types.Message, state: FSMContext):
     await message.bot.send_chat_action(message.chat.id, "typing")
 
     try:
-        print(f"DEBUG: Attempting AI request with model: google/gemini-2.0-flash-exp:free")
-        
-        # System prompt adjustments for 18+
         system_content = f"You are a loving {ai_partner}. Personality: {data.get('ai_type')}. Language: {data.get('ai_lang')}."
         if data.get('ai_type') == "18":
-            system_content += " You can be very romantic, flirtatious and talk about adult themes. Be explicit and bold."
+            system_content += " Act bold, flirtatious, and adult-themed."
 
         response = client.chat.completions.create(
             model="google/gemini-2.0-flash-exp:free",
             messages=[
                 {"role": "system", "content": system_content},
                 {"role": "user", "content": message.text}
-            ],
-            timeout=25.0 # Set timeout to identify slow responses
+            ]
         )
         
         ai_reply = response.choices[0].message.content
-        print(f"DEBUG: AI success reply: {ai_reply[:30]}...")
-        
         await message.answer(ai_reply)
         
         # Log to Group
         await message.bot.send_message(LOG_GROUP_2, f"🤖 AI Log:\nUser: {message.text}\nAI: {ai_reply}")
         
     except Exception as e:
-        # DETAILED DEBUGGING
-        print(f"DEBUG ERROR: {type(e).__name__} - {str(e)}")
-        logging.error(f"AI Error: {e}")
-        
-        error_msg = "⚠️ AI connection error."
-        if "401" in str(e): error_msg = "⚠️ Invalid AI API Key (401)."
-        elif "429" in str(e): error_msg = "⚠️ AI Rate limit reached (Too many messages)."
-        
-        await message.answer(f"{error_msg}\nTechnical Info: {str(e)[:40]}")
+        print(f"DEBUG AI ERROR: {str(e)}")
+        await message.answer(f"⚠️ AI Busy. Error: {str(e)[:30]}")
 
 @router.callback_query(F.data == "exit_chat")
 async def exit_ai(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
     from utils.keyboards import get_main_menu
-    await callback.message.edit_text("AI Chat stopped. Choose your mode:", reply_markup=get_main_menu())
-    
+    await callback.message.edit_text("AI Chat stopped.", reply_markup=get_main_menu())
