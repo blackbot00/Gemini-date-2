@@ -1,13 +1,14 @@
 import httpx
 import uuid
+import logging
 from config import CASHFREE_APP_ID, CASHFREE_SECRET_KEY
 
-# PROD URL: https://api.cashfree.com/pg/orders
-# SANDBOX URL: https://sandbox.cashfree.com/pg/orders
+# Real Payment API
 BASE_URL = "https://api.cashfree.com/pg/orders" 
 
 async def create_cashfree_order(user_id, amount, customer_name="User"):
-    order_id = f"ORDER_{user_id}_{uuid.uuid4().hex[:5]}"
+    # Unique Order ID generation
+    order_id = f"ORDER_{user_id}_{uuid.uuid4().hex[:6]}"
     
     headers = {
         "x-client-id": CASHFREE_APP_ID,
@@ -22,7 +23,7 @@ async def create_cashfree_order(user_id, amount, customer_name="User"):
         "order_currency": "INR",
         "customer_details": {
             "customer_id": str(user_id),
-            "customer_phone": "9999999999", # Required field
+            "customer_phone": "9999999999", # Required placeholder
             "customer_name": customer_name
         }
     }
@@ -32,12 +33,11 @@ async def create_cashfree_order(user_id, amount, customer_name="User"):
             response = await client.post(BASE_URL, json=payload, headers=headers)
             if response.status_code == 200:
                 data = response.json()
-                # session_id thaan checkout page generate panna venum
+                # Session ID is key for generating the checkout URL
                 return data.get("payment_session_id"), order_id
             else:
-                print(f"Cashfree Error: {response.text}")
+                logging.error(f"Cashfree API Error: {response.text}")
                 return None, None
         except Exception as e:
-            print(f"Connection Error: {e}")
+            logging.error(f"Connection Error: {e}")
             return None, None
-                
