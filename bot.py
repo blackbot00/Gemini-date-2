@@ -1,8 +1,9 @@
 import asyncio
 import logging
-from aiogram import Bot, Dispatcher, types
+from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
+from aiogram.client.default import DefaultBotProperties # Intha import mukkiyama
 from config import API_TOKEN, LOG_GROUP_1
 from handlers import registration, human_chat, chat_ai, common
 from utils import keyboards, states
@@ -11,7 +12,12 @@ from database import db
 # Enable Logging
 logging.basicConfig(level=logging.INFO)
 
-bot = Bot(token=API_TOKEN, parse_mode="Markdown")
+# Updated Bot Initialization for aiogram 3.7.0+
+bot = Bot(
+    token=API_TOKEN, 
+    default=DefaultBotProperties(parse_mode="Markdown")
+)
+
 dp = Dispatcher()
 
 @dp.message(Command("start"))
@@ -50,4 +56,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-                                    
