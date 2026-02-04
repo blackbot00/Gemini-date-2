@@ -1,5 +1,4 @@
 import openai
-import logging
 from aiogram import Router, F, types
 from aiogram.fsm.context import FSMContext
 from config import OPENROUTER_KEY, LOG_GROUP_2
@@ -18,11 +17,10 @@ client = openai.OpenAI(
     }
 )
 
-# Gemini-ah primary-ah vechurukaen. Oru valai Gemini busy-ah iruntha GPT-4o-mini backup-ah work aagum.
 MODELS = [
-    "google/gemini-2.0-flash-lite-preview-02-05:free", # Primary: Gemini
-    "openai/gpt-4o-mini",                            # Backup 1
-    "google/gemini-2.0-pro-exp-02-05:free"           # Backup 2
+    "google/gemini-2.0-flash-lite-preview-02-05:free",
+    "openai/gpt-4o-mini",
+    "google/gemini-2.0-pro-exp-02-05:free"
 ]
 
 @router.callback_query(F.data == "chat_ai")
@@ -70,10 +68,12 @@ async def start_ai_chat_session(callback: types.CallbackQuery, state: FSMContext
 
 @router.message(ChatState.on_ai_chat)
 async def handle_ai_msg(message: types.Message, state: FSMContext):
+    # Added /exit command check
+    if message.text == "/exit":
+        await state.clear()
+        return await message.answer("AI Chat stopped.", reply_markup=get_main_menu())
+
     if not message.text or message.text.startswith('/'):
-        if message.text in ["/exit", "/stop"]:
-            await state.clear()
-            return await message.answer("AI Chat stopped.", reply_markup=get_main_menu())
         return
 
     data = await state.get_data()
@@ -98,16 +98,14 @@ async def handle_ai_msg(message: types.Message, state: FSMContext):
                 timeout=15
             )
             ai_reply = response.choices[0].message.content
-            if ai_reply: 
-                print(f"DEBUG: Reply from {model_id}")
-                break
-        except Exception as e:
-            print(f"DEBUG: {model_id} failed: {e}")
+            if ai_reply: break
+        except:
             continue
 
     if ai_reply:
         await message.answer(ai_reply)
-        await message.bot.send_message(LOG_GROUP_2, f"🤖 AI Log:\nUser: {message.text}\nAI: {ai_reply}")
+        # Standard AI Log
+        await message.bot.send_message(LOG_GROUP_2, f"🤖 AI Log | User: {user['name']}\n💬 {message.text}\n🤖 {ai_reply}")
     else:
         await message.answer("⚠️ AI connection error. Please try again.")
 
