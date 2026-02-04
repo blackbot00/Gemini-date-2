@@ -25,3 +25,4 @@ def get_main_menu():
         types.InlineKeyboardButton(text="💎 Premium", callback_data="go_premium")
     )
     return builder.as_markup()
+    
