@@ -146,7 +146,7 @@ async def submit_report(callback: types.CallbackQuery):
         f"Reason: {reason}"
     )
     await callback.bot.send_message(LOG_GROUP_1, report_msg)
-    await callback.message.edit_text("✅ Report submitted.")
+    await callback.message.edit_text("✅ Report submitted to admins. Thank you!")
 
 @router.callback_query(F.data == "exit_chat")
 async def exit_callback(callback: types.CallbackQuery, state: FSMContext):
