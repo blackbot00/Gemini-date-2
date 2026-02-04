@@ -98,7 +98,7 @@ async def relay_handler(message: types.Message, state: FSMContext):
         if not user.get("is_premium"):
             elapsed = (datetime.datetime.now() - user.get("chat_start")).total_seconds()
             if elapsed < 180:
-                return await message.answer(f"⏳ Media enabled in {int(180 - elapsed)}s.")
+                return await message.answer(f"⏳ Media enabled in {int(180 - elapsed)}seconds. Upgrade to Premium for instant share! 💎")
 
     # 2. LOGGING HEADER
     log_header = f"📤({user['name']})[{user['user_id']}] ➜ ({partner_data['name']})[{partner_id}]📩"
