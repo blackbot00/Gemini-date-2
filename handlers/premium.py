@@ -6,8 +6,8 @@ import datetime
 router = Router()
 
 # --- SETTINGS ---
-ADMIN_ID = 123456789  # Unga Telegram ID-ah inga podunga
-UPI_ID = "yourname@okicici" # Unga G-Pay/PhonePe UPI ID inga podunga
+ADMIN_ID = 5630585157  # Unga Telegram ID-ah inga podunga
+UPI_ID = "aristotlea8@okaxis" # Unga G-Pay/PhonePe UPI ID inga podunga
 
 PLANS = {
     "29": {"name": "1 Week", "days": 7},
