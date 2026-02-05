@@ -1,7 +1,5 @@
 from aiogram import Router, F, types
 from aiogram.filters import Command
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
 from database import db
 from utils.keyboards import get_main_menu
 import datetime
@@ -9,10 +7,6 @@ import urllib.parse
 from config import ADMIN_ID, UPI_ID
 
 router = Router()
-
-# State handling for screenshot
-class PaymentState(StatesGroup):
-    waiting_for_screenshot = State()
 
 PLANS = {
     "29": {"name": "1 Week", "days": 7},
@@ -22,17 +16,15 @@ PLANS = {
 
 @router.message(Command("premium"))
 @router.callback_query(F.data == "go_premium")
-async def premium_menu(event: types.Message | types.CallbackQuery, state: FSMContext):
-    await state.clear() # Clear any previous states
+async def premium_menu(event: types.Message | types.CallbackQuery):
     text = (
-        "💎 **CoupleDating Premium Plans**\n"
+        "💎 **Premium Plans**\n"
         "━━━━━━━━━━━━━━\n"
         "1️⃣ **1 Week** - ₹29\n"
         "2️⃣ **1 Month** - ₹79\n"
-        "3️⃣ **3 Months** - ₹149\n"
-        "━━━━━━━━━━━━━━\n"
+        "3️⃣ **3 Months** - ₹149\n\n"
         "✅ QR Code scan panni pay pannunga.\n"
-        "✅ Screenshot anupunga, 5 mins la active aagum!"
+        "📸 Pay panna apram **Screenshot**-ah inga anupunga!"
     )
     kb = types.InlineKeyboardMarkup(inline_keyboard=[
         [types.InlineKeyboardButton(text="🎟️ 1 Week - ₹29", callback_data="payup_29")],
@@ -44,15 +36,14 @@ async def premium_menu(event: types.Message | types.CallbackQuery, state: FSMCon
     if isinstance(event, types.Message):
         await event.answer(text, reply_markup=kb)
     else:
-        # Check if the current message has a caption (is a photo) or text
-        if event.message.photo:
+        # Photo message-ah edit panna mudiyaadhu, so delete & send
+        try:
             await event.message.delete()
-            await event.message.answer(text, reply_markup=kb)
-        else:
-            await event.message.edit_text(text, reply_markup=kb)
+        except: pass
+        await event.message.answer(text, reply_markup=kb)
 
 @router.callback_query(F.data.startswith("payup_"))
-async def process_direct_pay(callback: types.CallbackQuery, state: FSMContext):
+async def process_direct_pay(callback: types.CallbackQuery):
     amount = callback.data.split("_")[1]
     plan = PLANS[amount]
     
@@ -64,9 +55,10 @@ async def process_direct_pay(callback: types.CallbackQuery, state: FSMContext):
         f"✨ **Plan: {plan['name']}**\n"
         f"💰 **Amount: ₹{amount}**\n\n"
         f"📍 **UPI ID:** `{UPI_ID}`\n\n"
-        f"📸 **Step 1:** Intha QR code-ah scan panni ₹{amount} pay pannunga.\n"
-        f"📤 **Step 2:** Pay panni mudichuttu **Screenshot**-ah keela anupunga.\n\n"
-        f"⏳ Admin verify panna udanae active aagidum."
+        f"📸 **Instructions:**\n"
+        f"1. QR code scan panni pay pannunga.\n"
+        f"2. Screenshot-ah indha chat-laye anupunga.\n"
+        f"3. Admin verify panni 5 mins-la active pannuvanga."
     )
     
     kb = types.InlineKeyboardMarkup(inline_keyboard=[
@@ -75,76 +67,69 @@ async def process_direct_pay(callback: types.CallbackQuery, state: FSMContext):
     
     await callback.answer()
     await callback.message.delete()
-    
-    # Send QR and set state
-    await callback.bot.send_photo(
-        chat_id=callback.message.chat.id,
-        photo=qr_api_url,
-        caption=caption,
-        reply_markup=kb,
-        parse_mode="Markdown"
-    )
-    await state.set_state(PaymentState.waiting_for_screenshot)
-    await state.update_data(plan_amount=amount)
+    await callback.bot.send_photo(callback.message.chat.id, photo=qr_api_url, caption=caption, reply_markup=kb)
 
-# --- Screenshot Handling with State ---
-
-@router.message(PaymentState.waiting_for_screenshot, F.photo)
-async def handle_payment_screenshot(message: types.Message, state: FSMContext):
-    data = await state.get_data()
-    amount = data.get("plan_amount", "Unknown")
+# --- GLOBAL PHOTO HANDLER ---
+# User eppo photo anupunaalum admin-ku proof-ah pogum
+@router.message(F.photo)
+async def handle_any_photo(message: types.Message):
+    # User-ku reply
+    await message.reply("✅ **Proof Received!**\nAdmin check panni premium active pannuvaaru. Please wait 5-10 mins.")
     
-    await message.answer("✅ Screenshot received! Admin check panniட்டு activate pannuvanga. Please wait.")
-    
+    # Admin-ku anupa vendiya buttons
+    # Note: callback_data length limit 64 characters, so keep it short
     kb = types.InlineKeyboardMarkup(inline_keyboard=[
-        [types.InlineKeyboardButton(text="✅ Approve", callback_data=f"approve_{message.from_user.id}_{amount}")],
-        [types.InlineKeyboardButton(text="❌ Reject", callback_data=f"reject_{message.from_user.id}")]
+        [
+            types.InlineKeyboardButton(text="✅ Approve (30 Days)", callback_data=f"adm_ok_{message.from_user.id}_30"),
+            types.InlineKeyboardButton(text="✅ Approve (7 Days)", callback_data=f"adm_ok_{message.from_user.id}_7")
+        ],
+        [types.InlineKeyboardButton(text="❌ Reject", callback_data=f"adm_no_{message.from_user.id}")]
     ])
     
-    # Send to Admin
+    # Admin-ku photo-voda details anupuradhu
     await message.bot.send_photo(
-        ADMIN_ID, 
-        message.photo[-1].file_id, 
-        caption=f"💰 **New Payment Proof!**\n\n👤 User: {message.from_user.full_name}\n🆔 ID: `{message.from_user.id}`\n💵 Plan: ₹{amount}",
+        chat_id=ADMIN_ID,
+        photo=message.photo[-1].file_id,
+        caption=f"💰 **New Payment Proof!**\n\n👤 User: {message.from_user.full_name}\n🆔 ID: `{message.from_user.id}`\n\nCheck payment & click button below:",
         reply_markup=kb
     )
-    await state.clear()
 
-# --- Approval Logic ---
+# --- ADMIN ACTIONS ---
 
-@router.callback_query(F.data.startswith("approve_"))
-async def approve_payment(callback: types.CallbackQuery):
-    parts = callback.data.split("_")
-    user_id = int(parts[1])
-    amount = parts[2]
+@router.callback_query(F.data.startswith("adm_ok_"))
+async def admin_approve(callback: types.CallbackQuery):
+    # data format: adm_ok_USERID_DAYS
+    data = callback.data.split("_")
+    target_user_id = int(data[2])
+    days = int(data[3])
     
-    # Logic for days based on amount
-    days = 30
-    if amount == "29": days = 7
-    elif amount == "149": days = 90
-
     expiry = datetime.datetime.now() + datetime.timedelta(days=days)
     
+    # DB Update
     await db.users.update_one(
-        {"user_id": user_id},
+        {"user_id": target_user_id},
         {"$set": {"is_premium": True, "expiry_date": expiry.strftime("%Y-%m-%d")}}
     )
     
+    # Notify User
     try:
-        await callback.bot.send_message(user_id, f"🎉 **Premium Activated!**\n\nPlan: ₹{amount}\nExpiry: {expiry.strftime('%Y-%m-%d')}\n🔥 Enjoy your features!")
-    except:
-        pass
-        
-    await callback.message.edit_caption(caption=callback.message.caption + "\n\n✅ **APPROVED**")
+        await callback.bot.send_message(
+            target_user_id, 
+            f"🎉 **Premium Activated!**\n\nPlan: {days} Days\nExpiry: {expiry.strftime('%Y-%m-%d')}\n🔥 Unlimited features access unlocked!"
+        )
+    except: pass
+    
+    await callback.message.edit_caption(caption=callback.message.caption + f"\n\n✅ **APPROVED ({days} Days)**")
     await callback.answer("Premium Activated!")
 
-@router.callback_query(F.data.startswith("reject_"))
-async def reject_payment(callback: types.CallbackQuery):
-    user_id = int(callback.data.split("_")[1])
+@router.callback_query(F.data.startswith("adm_no_"))
+async def admin_reject(callback: types.CallbackQuery):
+    target_user_id = int(callback.data.split("_")[2])
+    
     try:
-        await callback.bot.send_message(user_id, "❌ **Payment Rejected!**\nPlease check the screenshot and try again.")
-    except:
-        pass
+        await callback.bot.send_message(target_user_id, "❌ **Payment Rejected!**\n\nUngal screenshot verify panna mudiyaala. Proper-ana proof anupunga.")
+    except: pass
+    
     await callback.message.edit_caption(caption=callback.message.caption + "\n\n❌ **REJECTED**")
     await callback.answer("Rejected.")
-    
+            
