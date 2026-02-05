@@ -41,17 +41,17 @@ async def cmd_start(message: types.Message, state: FSMContext):
 async def main():
     asyncio.create_task(start_health_server()) 
     
-    # Router order: Premium is placed before common
-    dp.include_router(chat_ai.router)
-    dp.include_router(profile.router)
-    dp.include_router(human_chat.router)
-    dp.include_router(premium.router) # Registration handling before common
-    dp.include_router(registration.router)
-    dp.include_router(common.router) 
+    # --- ROUTER ORDER IS CRITICAL ---
+    dp.include_router(premium.router)      # 1. First check for Premium/Payment
+    dp.include_router(registration.router) # 2. Then Registration
+    dp.include_router(chat_ai.router)      # 3. AI Chat
+    dp.include_router(profile.router)      # 4. Profile
+    dp.include_router(human_chat.router)   # 5. Human Chat
+    dp.include_router(common.router)       # 6. Common commands
     
     print("🚀 Bot is live on Koyeb!")
     await dp.start_polling(bot, skip_updates=True)
 
 if __name__ == "__main__":
     asyncio.run(main())
-    
+        
