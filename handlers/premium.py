@@ -39,7 +39,7 @@ async def verify_link_payment(callback: types.CallbackQuery):
     headers = {
         "x-client-id": CASHFREE_APP_ID,
         "x-client-secret": CASHFREE_SECRET_KEY,
-        "x-api-version": "2023-08-01"
+        "x-api-version": "2025-01-01"
     }
     
     async with httpx.AsyncClient() as client:
