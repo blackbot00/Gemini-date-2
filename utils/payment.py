@@ -23,7 +23,7 @@ async def create_cashfree_order(user_id, amount, customer_name="User"):
         "order_currency": "INR",
         "customer_details": {
             "customer_id": str(user_id),
-            "customer_phone": "9999999999", # Required placeholder
+            "customer_phone": "6369622403", # Required placeholder
             "customer_name": customer_name
         }
     }
