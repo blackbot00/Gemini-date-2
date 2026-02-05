@@ -6,7 +6,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.client.default import DefaultBotProperties
 from aiohttp import web
 from config import API_TOKEN, LOG_GROUP_1
-from handlers import registration, human_chat, chat_ai, common, profile
+from handlers import registration, human_chat, chat_ai, common, profile, premium
 from utils import keyboards, states
 from database import db
 
@@ -52,6 +52,7 @@ async def main():
     dp.include_router(human_chat.router)
     dp.include_router(registration.router)
     dp.include_router(common.router) # Common router should be last as it catches all
+    dp.include_router(premium.router)
     
     print("🚀 Bot is live on Koyeb!")
     await dp.start_polling(bot, skip_updates=True)
