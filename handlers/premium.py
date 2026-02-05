@@ -8,6 +8,7 @@ from config import ADMIN_ID, UPI_ID
 
 router = Router()
 
+# Subscription Plans Configuration
 PLANS = {
     "29": {"name": "1 Week", "days": 7},
     "79": {"name": "1 Month", "days": 30},
@@ -44,12 +45,12 @@ async def process_direct_pay(callback: types.CallbackQuery):
     amount = callback.data.split("_")[1]
     plan = PLANS[amount]
     
-    # UPI Link Generation
+    # Generate UPI Payload for QR Code
     upi_payload = f"upi://pay?pa={UPI_ID}&pn=CoupleDating&am={amount}&cu=INR"
     
-    # URL Encoding for Google API
+    # Using QuickChart API for better Telegram compatibility
     encoded_upi = urllib.parse.quote(upi_payload)
-    qr_api_url = f"https://chart.googleapis.com/chart?chs=300x300&cht=qr&chl={encoded_upi}&choe=UTF-8"
+    qr_api_url = f"https://quickchart.io/qr?text={encoded_upi}&size=300"
     
     caption = (
         f"✨ **Plan: {plan['name']}**\n"
@@ -65,31 +66,39 @@ async def process_direct_pay(callback: types.CallbackQuery):
     ])
     
     await callback.answer()
-    # Message-ah delete panniட்டு photo-voda puthu message anupuvom
+    
     try:
+        # Send New Photo with QR
+        await callback.bot.send_photo(
+            chat_id=callback.message.chat.id,
+            photo=qr_api_url,
+            caption=caption,
+            reply_markup=kb,
+            parse_mode="Markdown"
+        )
+        # Delete the previous plan selection message
         await callback.message.delete()
-    except:
-        pass
+    except Exception as e:
+        # Fallback if QR fails
+        await callback.message.edit_text(
+            f"❌ **QR Error!**\n\nDirect-ah pay pannunga:\nUPI ID: `{UPI_ID}`\nAmount: ₹{amount}\n\nScreenshot anupunga.",
+            reply_markup=kb
+        )
 
-    await callback.bot.send_photo(
-        chat_id=callback.message.chat.id,
-        photo=qr_api_url,
-        caption=caption,
-        reply_markup=kb,
-        parse_mode="Markdown"
-    )
-
-# --- SCREENSHOT HANDLING & APPROVAL (SAME LOGIC) ---
+# --- Payment Screenshot Handling ---
 
 @router.message(F.photo)
 async def handle_payment_screenshot(message: types.Message):
+    # Notify User
     await message.answer("✅ Screenshot received! Admin check panniட்டு activate pannuvanga. Please wait.")
     
+    # Inline Buttons for Admin Approval
     kb = types.InlineKeyboardMarkup(inline_keyboard=[
-        [types.InlineKeyboardButton(text="✅ Approve", callback_data=f"approve_{message.from_user.id}")],
-        [types.InlineKeyboardButton(text="❌ Reject", callback_data=f"reject_{message.from_user.id}")]
+        [types.InlineKeyboardButton(text="✅ Approve", callback_data=f"approve_{message.from_user.id}_{message.message_id}")],
+        [types.InlineKeyboardButton(text="❌ Reject", callback_data=f"reject_{message.from_user.id}") ]
     ])
     
+    # Forward to Admin
     await message.bot.send_photo(
         ADMIN_ID, 
         message.photo[-1].file_id, 
@@ -97,28 +106,41 @@ async def handle_payment_screenshot(message: types.Message):
         reply_markup=kb
     )
 
+# --- Admin Approval Actions ---
+
 @router.callback_query(F.data.startswith("approve_"))
 async def approve_payment(callback: types.CallbackQuery):
-    user_id = int(callback.data.split("_")[1])
+    data = callback.data.split("_")
+    user_id = int(data[1])
+    
+    # Set Expiry Date (Default 30 days, logic can be improved based on plan)
     expiry = datetime.datetime.now() + datetime.timedelta(days=30)
     
+    # Update Database
     await db.users.update_one(
         {"user_id": user_id},
         {"$set": {"is_premium": True, "expiry_date": expiry.strftime("%Y-%m-%d")}}
     )
     
+    # Notify User
     try:
-        await callback.bot.send_message(user_id, "🎉 **Premium Activated!**\n\nUnlimited features unlock aagidichi! 🔥")
+        await callback.bot.send_message(user_id, "🎉 **Premium Activated!**\n\nUnlimited features ippo unlock aagidichi! 🔥")
     except:
         pass
+        
     await callback.message.edit_caption(caption=callback.message.caption + "\n\n✅ **APPROVED**")
+    await callback.answer("User promoted to Premium!")
 
 @router.callback_query(F.data.startswith("reject_"))
 async def reject_payment(callback: types.CallbackQuery):
     user_id = int(callback.data.split("_")[1])
+    
+    # Notify User
     try:
-        await callback.bot.send_message(user_id, "❌ **Payment Rejected!**\nPlease check the screenshot and try again.")
+        await callback.bot.send_message(user_id, "❌ **Payment Rejected!**\n\nScreenshot verify panna mudiyaala. Correct-ana proof anupunga.")
     except:
         pass
+        
     await callback.message.edit_caption(caption=callback.message.caption + "\n\n❌ **REJECTED**")
+    await callback.answer("Payment rejected.")
     
