@@ -8,33 +8,62 @@ from config import CASHFREE_APP_ID, CASHFREE_SECRET_KEY
 
 router = Router()
 
-@router.callback_query(F.data == "pay_now")
-async def process_payment(callback: types.CallbackQuery):
+# Premium main menu showing plans
+@router.callback_query(F.data == "go_premium")
+async def premium_menu(callback: types.CallbackQuery):
+    text = (
+        "💎 **CoupleDating Premium Plans**\n"
+        "━━━━━━━━━━━━━━\n"
+        "1️⃣ **1 Week** - ₹29\n"
+        "2️⃣ **1 Month** - ₹79\n"
+        "3️⃣ **3 Months** - ₹149\n"
+        "━━━━━━━━━━━━━━\n"
+        "✅ Unlimited Human Chats\n"
+        "✅ Instant Media Sharing\n"
+        "✅ Reveal Partner Details\n"
+        "✅ 18+ AI Personality Mode"
+    )
+    
+    kb = types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton(text="🎟️ 1 Week - ₹29", callback_data="buy_29")],
+        [types.InlineKeyboardButton(text="🎟️ 1 Month - ₹79", callback_data="buy_79")],
+        [types.InlineKeyboardButton(text="🎟️ 3 Months - ₹149", callback_data="buy_149")],
+        [types.InlineKeyboardButton(text="🔙 Back", callback_data="main_menu")]
+    ])
+    await callback.message.edit_text(text, reply_markup=kb)
+
+# Handling plan selection and link generation
+@router.callback_query(F.data.startswith("buy_"))
+async def process_plan_selection(callback: types.CallbackQuery):
+    amount = int(callback.data.split("_")[1])
     user_id = callback.from_user.id
     user_name = callback.from_user.first_name
     
-    await callback.message.edit_text("⏳ Generating payment link...")
+    plan_name = "1 Week" if amount == 29 else "1 Month" if amount == 79 else "3 Months"
     
-    # Amount ₹29
-    link_url, link_id = await create_cashfree_order(user_id, 29, user_name)
+    await callback.message.edit_text(f"⏳ Generating link for {plan_name} plan...")
+    
+    link_url, link_id = await create_cashfree_order(user_id, amount, user_name)
     
     if link_url:
         kb = types.InlineKeyboardMarkup(inline_keyboard=[
-            [types.InlineKeyboardButton(text="🚀 Click to Pay ₹29", url=link_url)],
-            [types.InlineKeyboardButton(text="✅ Check Payment Status", callback_data=f"vlnk_{link_id}")]
+            [types.InlineKeyboardButton(text=f"🚀 Pay ₹{amount} Now", url=link_url)],
+            [types.InlineKeyboardButton(text="✅ Check Status", callback_data=f"vlnk_{link_id}_{amount}")]
         ])
         await callback.message.edit_text(
-            "✅ **Link Ready!**\n\nPay panni mudichuttu 'Check Payment Status' click pannunga.",
+            f"✅ **{plan_name} Plan Link Ready!**\n\nPay panni mudichuttu 'Check Status' click pannunga.",
             reply_markup=kb
         )
     else:
-        await callback.message.edit_text("❌ Error. Try again later.")
+        await callback.message.edit_text("❌ Error generating link. Please try again.")
 
+# Verification and Activation
 @router.callback_query(F.data.startswith("vlnk_"))
 async def verify_link_payment(callback: types.CallbackQuery):
-    link_id = callback.data.split("_")[1]
+    parts = callback.data.split("_")
+    link_id = parts[1]
+    amount = int(parts[2])
     
-    # Payment Link status check panna API
     url = f"https://api.cashfree.com/pg/links/{link_id}"
     headers = {
         "x-client-id": CASHFREE_APP_ID,
@@ -46,13 +75,23 @@ async def verify_link_payment(callback: types.CallbackQuery):
         response = await client.get(url, headers=headers)
         data = response.json()
         
-        # Link status 'PAID' ah nu check pannuvom
         if data.get("link_status") == "PAID":
+            # Duration logic
+            days = 7 if amount == 29 else 30 if amount == 79 else 90
+            expiry_date = datetime.datetime.now() + datetime.timedelta(days=days)
+            
             await db.users.update_one(
                 {"user_id": callback.from_user.id},
-                {"$set": {"is_premium": True, "premium_since": str(datetime.datetime.now())}}
+                {"$set": {
+                    "is_premium": True, 
+                    "plan_amount": amount,
+                    "expiry_date": expiry_date.strftime("%Y-%m-%d %H:%M")
+                }}
             )
-            await callback.message.edit_text("🎉 **Premium Active!** Enjoy unlimited chats!", reply_markup=get_main_menu())
+            await callback.message.edit_text(
+                f"🎉 **Premium Active!**\n\nPlan: {days} Days\nExpires on: {expiry_date.strftime('%d %b %Y')}\n\nEnjoy unlimited features! 🔥",
+                reply_markup=get_main_menu()
+            )
         else:
-            await callback.answer("⚠️ Payment innum mudikala. Pay pannittu try pannunga!", show_alert=True)
+            await callback.answer("⚠️ Payment innum receive aagala. Pay pannittu try pannunga!", show_alert=True)
     
