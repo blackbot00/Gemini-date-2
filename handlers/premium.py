@@ -3,6 +3,7 @@ from aiogram.filters import Command
 from database import db
 from utils.keyboards import get_main_menu
 import datetime
+import urllib.parse
 from config import ADMIN_ID, UPI_ID
 
 router = Router()
@@ -23,7 +24,7 @@ async def premium_menu(event: types.Message | types.CallbackQuery):
         "2️⃣ **1 Month** - ₹79\n"
         "3️⃣ **3 Months** - ₹149\n"
         "━━━━━━━━━━━━━━\n"
-        "✅ Direct G-Pay/PhonePe (0% Fees)\n"
+        "✅ QR Code scan panni pay pannunga.\n"
         "✅ Screenshot anupunga, 5 mins la active aagum!"
     )
     kb = types.InlineKeyboardMarkup(inline_keyboard=[
@@ -43,29 +44,43 @@ async def process_direct_pay(callback: types.CallbackQuery):
     amount = callback.data.split("_")[1]
     plan = PLANS[amount]
     
-    # Telegram inline buttons don't support upi:// links. 
-    # So we show the link in text for the user to click.
-    upi_link = f"upi://pay?pa={UPI_ID}&pn=CoupleDating&am={amount}&cu=INR"
+    # UPI Link Generation
+    upi_payload = f"upi://pay?pa={UPI_ID}&pn=CoupleDating&am={amount}&cu=INR"
     
-    text = (
+    # URL Encoding for Google API
+    encoded_upi = urllib.parse.quote(upi_payload)
+    qr_api_url = f"https://chart.googleapis.com/chart?chs=300x300&cht=qr&chl={encoded_upi}&choe=UTF-8"
+    
+    caption = (
         f"✨ **Plan: {plan['name']}**\n"
         f"💰 **Amount: ₹{amount}**\n\n"
-        f"📍 **UPI ID:** `{UPI_ID}` (Click to copy)\n\n"
-        f"🚀 **Step 1:** Click the link below to pay:\n"
-        f"👉 {upi_link}\n\n"
-        f"📸 **Step 2:** Pay panni mudichuttu **Screenshot**-ah inga anupunga.\n"
+        f"📍 **UPI ID:** `{UPI_ID}`\n\n"
+        f"📸 **Step 1:** Intha QR code-ah scan panni ₹{amount} pay pannunga.\n"
+        f"📤 **Step 2:** Pay panni mudichuttu **Screenshot**-ah inga anupunga.\n\n"
         f"⏳ Admin verify panna udanae premium active aagidum."
     )
     
-    # We removed the URL button to fix the "Unsupported URL protocol" error
     kb = types.InlineKeyboardMarkup(inline_keyboard=[
-        [types.InlineKeyboardButton(text="🔙 Back to Plans", callback_data="go_premium")]
+        [types.InlineKeyboardButton(text="🔙 Back", callback_data="go_premium")]
     ])
     
     await callback.answer()
-    await callback.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
+    # Message-ah delete panniட்டு photo-voda puthu message anupuvom
+    try:
+        await callback.message.delete()
+    except:
+        pass
 
-# Handle Screenshot & Approval (remains the same)
+    await callback.bot.send_photo(
+        chat_id=callback.message.chat.id,
+        photo=qr_api_url,
+        caption=caption,
+        reply_markup=kb,
+        parse_mode="Markdown"
+    )
+
+# --- SCREENSHOT HANDLING & APPROVAL (SAME LOGIC) ---
+
 @router.message(F.photo)
 async def handle_payment_screenshot(message: types.Message):
     await message.answer("✅ Screenshot received! Admin check panniட்டு activate pannuvanga. Please wait.")
@@ -106,4 +121,4 @@ async def reject_payment(callback: types.CallbackQuery):
     except:
         pass
     await callback.message.edit_caption(caption=callback.message.caption + "\n\n❌ **REJECTED**")
-        
+    
