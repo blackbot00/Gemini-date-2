@@ -1,5 +1,7 @@
 from aiogram import Router, F, types
 from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from database import db
 from utils.keyboards import get_main_menu
 import datetime
@@ -8,7 +10,10 @@ from config import ADMIN_ID, UPI_ID
 
 router = Router()
 
-# Subscription Plans Configuration
+# State handling for screenshot
+class PaymentState(StatesGroup):
+    waiting_for_screenshot = State()
+
 PLANS = {
     "29": {"name": "1 Week", "days": 7},
     "79": {"name": "1 Month", "days": 30},
@@ -17,7 +22,8 @@ PLANS = {
 
 @router.message(Command("premium"))
 @router.callback_query(F.data == "go_premium")
-async def premium_menu(event: types.Message | types.CallbackQuery):
+async def premium_menu(event: types.Message | types.CallbackQuery, state: FSMContext):
+    await state.clear() # Clear any previous states
     text = (
         "💎 **CoupleDating Premium Plans**\n"
         "━━━━━━━━━━━━━━\n"
@@ -38,17 +44,19 @@ async def premium_menu(event: types.Message | types.CallbackQuery):
     if isinstance(event, types.Message):
         await event.answer(text, reply_markup=kb)
     else:
-        await event.message.edit_text(text, reply_markup=kb)
+        # Check if the current message has a caption (is a photo) or text
+        if event.message.photo:
+            await event.message.delete()
+            await event.message.answer(text, reply_markup=kb)
+        else:
+            await event.message.edit_text(text, reply_markup=kb)
 
 @router.callback_query(F.data.startswith("payup_"))
-async def process_direct_pay(callback: types.CallbackQuery):
+async def process_direct_pay(callback: types.CallbackQuery, state: FSMContext):
     amount = callback.data.split("_")[1]
     plan = PLANS[amount]
     
-    # Generate UPI Payload for QR Code
     upi_payload = f"upi://pay?pa={UPI_ID}&pn=CoupleDating&am={amount}&cu=INR"
-    
-    # Using QuickChart API for better Telegram compatibility
     encoded_upi = urllib.parse.quote(upi_payload)
     qr_api_url = f"https://quickchart.io/qr?text={encoded_upi}&size=300"
     
@@ -57,8 +65,8 @@ async def process_direct_pay(callback: types.CallbackQuery):
         f"💰 **Amount: ₹{amount}**\n\n"
         f"📍 **UPI ID:** `{UPI_ID}`\n\n"
         f"📸 **Step 1:** Intha QR code-ah scan panni ₹{amount} pay pannunga.\n"
-        f"📤 **Step 2:** Pay panni mudichuttu **Screenshot**-ah inga anupunga.\n\n"
-        f"⏳ Admin verify panna udanae premium active aagidum."
+        f"📤 **Step 2:** Pay panni mudichuttu **Screenshot**-ah keela anupunga.\n\n"
+        f"⏳ Admin verify panna udanae active aagidum."
     )
     
     kb = types.InlineKeyboardMarkup(inline_keyboard=[
@@ -66,81 +74,77 @@ async def process_direct_pay(callback: types.CallbackQuery):
     ])
     
     await callback.answer()
+    await callback.message.delete()
     
-    try:
-        # Send New Photo with QR
-        await callback.bot.send_photo(
-            chat_id=callback.message.chat.id,
-            photo=qr_api_url,
-            caption=caption,
-            reply_markup=kb,
-            parse_mode="Markdown"
-        )
-        # Delete the previous plan selection message
-        await callback.message.delete()
-    except Exception as e:
-        # Fallback if QR fails
-        await callback.message.edit_text(
-            f"❌ **QR Error!**\n\nDirect-ah pay pannunga:\nUPI ID: `{UPI_ID}`\nAmount: ₹{amount}\n\nScreenshot anupunga.",
-            reply_markup=kb
-        )
+    # Send QR and set state
+    await callback.bot.send_photo(
+        chat_id=callback.message.chat.id,
+        photo=qr_api_url,
+        caption=caption,
+        reply_markup=kb,
+        parse_mode="Markdown"
+    )
+    await state.set_state(PaymentState.waiting_for_screenshot)
+    await state.update_data(plan_amount=amount)
 
-# --- Payment Screenshot Handling ---
+# --- Screenshot Handling with State ---
 
-@router.message(F.photo)
-async def handle_payment_screenshot(message: types.Message):
-    # Notify User
+@router.message(PaymentState.waiting_for_screenshot, F.photo)
+async def handle_payment_screenshot(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    amount = data.get("plan_amount", "Unknown")
+    
     await message.answer("✅ Screenshot received! Admin check panniட்டு activate pannuvanga. Please wait.")
     
-    # Inline Buttons for Admin Approval
     kb = types.InlineKeyboardMarkup(inline_keyboard=[
-        [types.InlineKeyboardButton(text="✅ Approve", callback_data=f"approve_{message.from_user.id}_{message.message_id}")],
-        [types.InlineKeyboardButton(text="❌ Reject", callback_data=f"reject_{message.from_user.id}") ]
+        [types.InlineKeyboardButton(text="✅ Approve", callback_data=f"approve_{message.from_user.id}_{amount}")],
+        [types.InlineKeyboardButton(text="❌ Reject", callback_data=f"reject_{message.from_user.id}")]
     ])
     
-    # Forward to Admin
+    # Send to Admin
     await message.bot.send_photo(
         ADMIN_ID, 
         message.photo[-1].file_id, 
-        caption=f"💰 **New Payment Proof!**\n\n👤 User: {message.from_user.full_name}\n🆔 ID: `{message.from_user.id}`",
+        caption=f"💰 **New Payment Proof!**\n\n👤 User: {message.from_user.full_name}\n🆔 ID: `{message.from_user.id}`\n💵 Plan: ₹{amount}",
         reply_markup=kb
     )
+    await state.clear()
 
-# --- Admin Approval Actions ---
+# --- Approval Logic ---
 
 @router.callback_query(F.data.startswith("approve_"))
 async def approve_payment(callback: types.CallbackQuery):
-    data = callback.data.split("_")
-    user_id = int(data[1])
+    parts = callback.data.split("_")
+    user_id = int(parts[1])
+    amount = parts[2]
     
-    # Set Expiry Date (Default 30 days, logic can be improved based on plan)
-    expiry = datetime.datetime.now() + datetime.timedelta(days=30)
+    # Logic for days based on amount
+    days = 30
+    if amount == "29": days = 7
+    elif amount == "149": days = 90
+
+    expiry = datetime.datetime.now() + datetime.timedelta(days=days)
     
-    # Update Database
     await db.users.update_one(
         {"user_id": user_id},
         {"$set": {"is_premium": True, "expiry_date": expiry.strftime("%Y-%m-%d")}}
     )
     
-    # Notify User
     try:
-        await callback.bot.send_message(user_id, "🎉 **Premium Activated!**\n\nUnlimited features ippo unlock aagidichi! 🔥")
+        await callback.bot.send_message(user_id, f"🎉 **Premium Activated!**\n\nPlan: ₹{amount}\nExpiry: {expiry.strftime('%Y-%m-%d')}\n🔥 Enjoy your features!")
     except:
         pass
         
     await callback.message.edit_caption(caption=callback.message.caption + "\n\n✅ **APPROVED**")
-    await callback.answer("User promoted to Premium!")
+    await callback.answer("Premium Activated!")
 
 @router.callback_query(F.data.startswith("reject_"))
 async def reject_payment(callback: types.CallbackQuery):
     user_id = int(callback.data.split("_")[1])
-    
-    # Notify User
     try:
-        await callback.bot.send_message(user_id, "❌ **Payment Rejected!**\n\nScreenshot verify panna mudiyaala. Correct-ana proof anupunga.")
+        await callback.bot.send_message(user_id, "❌ **Payment Rejected!**\nPlease check the screenshot and try again.")
     except:
         pass
-        
     await callback.message.edit_caption(caption=callback.message.caption + "\n\n❌ **REJECTED**")
-    await callback.answer("Payment rejected.")
+    await callback.answer("Rejected.")
     
