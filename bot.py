@@ -12,7 +12,6 @@ from database import db
 
 logging.basicConfig(level=logging.INFO)
 
-# --- KOYEB HEALTH CHECK ---
 async def handle_health(request):
     return web.Response(text="Bot is live!")
 
@@ -24,11 +23,7 @@ async def start_health_server():
     site = web.TCPSite(runner, "0.0.0.0", 8000)
     await site.start()
 
-# --- BOT SETUP ---
-bot = Bot(
-    token=API_TOKEN, 
-    default=DefaultBotProperties(parse_mode="Markdown")
-)
+bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode="Markdown"))
 dp = Dispatcher()
 
 @dp.message(Command("start"))
@@ -46,16 +41,17 @@ async def cmd_start(message: types.Message, state: FSMContext):
 async def main():
     asyncio.create_task(start_health_server()) 
     
-    # Registration handling logic
+    # Router order: Premium is placed before common
     dp.include_router(chat_ai.router)
-    dp.include_router(profile.router) # Profile added here
+    dp.include_router(profile.router)
     dp.include_router(human_chat.router)
+    dp.include_router(premium.router) # Registration handling before common
     dp.include_router(registration.router)
-    dp.include_router(common.router) # Common router should be last as it catches all
-    dp.include_router(premium.router)
+    dp.include_router(common.router) 
     
     print("🚀 Bot is live on Koyeb!")
     await dp.start_polling(bot, skip_updates=True)
 
 if __name__ == "__main__":
     asyncio.run(main())
+    
