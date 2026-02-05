@@ -6,8 +6,8 @@ import datetime
 router = Router()
 
 # --- MUKKIYAMANA SETTINGS ---
-ADMIN_ID = 123456789  # <--- UNGA TELEGRAM ID INGA PODUNGA
-UPI_ID = "yourname@okicici" # <--- UNGA G-PAY UPI ID INGA PODUNGA
+ADMIN_ID = 5630585157  # <--- UNGA TELEGRAM ID INGA PODUNGA
+UPI_ID = "aristotlea8@okaxis" # <--- UNGA G-PAY UPI ID INGA PODUNGA
 
 PLANS = {
     "29": {"name": "1 Week", "days": 7},
