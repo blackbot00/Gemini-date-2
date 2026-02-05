@@ -13,11 +13,10 @@ MONGO_URL = os.getenv("MONGO_URL")
 OPENROUTER_KEY = os.getenv("OPENROUTER_KEY")
 
 # IDs
+# Koyeb-la ADMIN_ID variable correct-ah numeric-ah irukanum
 ADMIN_ID = int(os.getenv("ADMIN_ID", 0))
 LOG_GROUP_1 = int(os.getenv("LOG_GROUP_1", 0)) 
 LOG_GROUP_2 = int(os.getenv("LOG_GROUP_2", 0)) 
 
-# --- PAYMENT CONFIG (New) ---
-# Cashfree thevaiyillai, athunala remove pannidunga.
-# Direct-ah UPI ID-ah inga set pannunga.
-UPI_ID = os.getenv("UPI_ID", "yourname@okicici") # Koyeb-la UPI_ID nu variable set pannunga
+# Payment Config
+UPI_ID = os.getenv("UPI_ID", "yourname@okicici") # Koyeb-la UPI_ID-nu set pannunga
