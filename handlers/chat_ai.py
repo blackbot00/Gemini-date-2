@@ -5,6 +5,7 @@ from config import OPENROUTER_KEY, LOG_GROUP_2
 from database import db
 from utils.states import ChatState
 from utils.keyboards import get_main_menu
+import datetime
 
 router = Router()
 
@@ -29,6 +30,8 @@ async def ai_menu(callback: types.CallbackQuery, state: FSMContext):
     kb = types.InlineKeyboardMarkup(inline_keyboard=[
         [types.InlineKeyboardButton(text="Tamil 🇮🇳", callback_data="ailang_Tamil"),
          types.InlineKeyboardButton(text="English 🇺🇸", callback_data="ailang_English")],
+        [types.InlineKeyboardButton(text="Telugu 🇮🇳", callback_data="ailang_Telugu"),
+         types.InlineKeyboardButton(text="Hindi 🇮🇳", callback_data="ailang_Hindi")],
         [types.InlineKeyboardButton(text="Tanglish ✍️", callback_data="ailang_Tanglish")]
     ])
     await callback.message.edit_text("✨ AI Match: Choose Language", reply_markup=kb)
@@ -68,7 +71,6 @@ async def start_ai_chat_session(callback: types.CallbackQuery, state: FSMContext
 
 @router.message(ChatState.on_ai_chat)
 async def handle_ai_msg(message: types.Message, state: FSMContext):
-    # Added /exit command check
     if message.text == "/exit":
         await state.clear()
         return await message.answer("AI Chat stopped.", reply_markup=get_main_menu())
@@ -76,15 +78,49 @@ async def handle_ai_msg(message: types.Message, state: FSMContext):
     if not message.text or message.text.startswith('/'):
         return
 
-    data = await state.get_data()
-    user = await db.users.find_one({"user_id": message.from_user.id})
-    ai_role = "Girlfriend" if user.get('gender') == 'male' else "Boyfriend"
+    user_id = message.from_user.id
+    user = await db.users.find_one({"user_id": user_id})
     
-    await message.bot.send_chat_action(message.chat.id, "typing")
+    # --- 1. CHAT LIMIT LOGIC (55 msgs/day) ---
+    is_premium = user.get("is_premium", False)
+    today = datetime.datetime.now().strftime("%Y-%m-%d")
+    
+    # Reset count if new day
+    if user.get("last_chat_date") != today:
+        await db.users.update_one({"user_id": user_id}, {"$set": {"chat_count": 0, "last_chat_date": today}})
+        current_count = 0
+    else:
+        current_count = user.get("chat_count", 0)
 
-    system_content = f"You are a human {ai_role}. Personality: {data.get('ai_type')}. Language: {data.get('ai_lang')}. Be concise and very romantic."
+    if not is_premium and current_count >= 55:
+        return await message.answer(
+            "🚀 **Daily Limit Reached (55/55)!**\n\nUpgrade to **Premium** for unlimited chat! 💎",
+            reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
+                [types.InlineKeyboardButton(text="💎 Get Premium", callback_data="go_premium")]
+            ])
+        )
+
+    # --- 2. AI PROMPT LOGIC ---
+    data = await state.get_data()
+    ai_gender = "feminine" if user.get('gender') == 'male' else "masculine"
+    if user.get('gender') == 'other': ai_gender = "neutral and warm"
+    
+    # Neenga kudutha detailed prompt setup:
+    system_content = (
+        f"You are a conversational AI dating companion. Speak like a real person, not a chatbot. "
+        f"Tone: {ai_gender}. Personality: {data.get('ai_type')}. Language: {data.get('ai_lang')}. "
+        "IMPORTANT RULES:\n"
+        "- NEVER repeat generic questions like 'What are you doing?'.\n"
+        "- Keep replies fresh, natural, and emotionally engaging.\n"
+        "- Use short sentences. Rotate topics like movies, music, viral trends, and love psychology.\n"
+        "- Mix warmth, curiosity, and subtle flirting.\n"
+        "- If playful/romantic, match the user's energy."
+    )
+    
     if data.get('ai_type') == "18":
         system_content += " Act bold and use explicit adult romantic language."
+
+    await message.bot.send_chat_action(message.chat.id, "typing")
 
     ai_reply = None
     for model_id in MODELS:
@@ -103,9 +139,19 @@ async def handle_ai_msg(message: types.Message, state: FSMContext):
             continue
 
     if ai_reply:
+        # Increase chat count
+        await db.users.update_one({"user_id": user_id}, {"$inc": {"chat_count": 1}})
+        
         await message.answer(ai_reply)
-        # Standard AI Log
-        await message.bot.send_message(LOG_GROUP_2, f"🤖 AI Log | User: {user['name']}\n💬 {message.text}\n🤖 {ai_reply}")
+        
+        # Enhanced Log with User ID
+        log_msg = (
+            f"🤖 **AI Log** | **User:** {user['name']}\n"
+            f"🆔 **ID:** `{user_id}`\n"
+            f"💬 {message.text}\n"
+            f"🤖 {ai_reply}"
+        )
+        await message.bot.send_message(LOG_GROUP_2, log_msg)
     else:
         await message.answer("⚠️ AI connection error. Please try again.")
 
