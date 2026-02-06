@@ -42,6 +42,7 @@ async def main():
     asyncio.create_task(start_health_server()) 
     
     # --- ROUTER ORDER IS CRITICAL ---
+    dp.include_router(admin.router)
     dp.include_router(premium.router)      # 1. First check for Premium/Payment
     dp.include_router(registration.router) # 2. Then Registration
     dp.include_router(chat_ai.router)      # 3. AI Chat
