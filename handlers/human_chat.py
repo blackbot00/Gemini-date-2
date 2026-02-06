@@ -89,7 +89,7 @@ async def relay_handler(message: types.Message, state: FSMContext):
     
     # Link & Username Block
     if message.text:
-        forbidden = ["http", ".com", ".in", "@", "t.me", "/", ".net"]
+        forbidden = ["http", ".com", ".in", "@", "t.me", ".net"]
         if not user.get("is_premium") and any(x in message.text.lower() for x in forbidden):
             return await message.answer("⚠️ Links and Usernames are blocked for Free users!")
 
