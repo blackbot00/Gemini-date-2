@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import datetime  # MUKKIYAM!
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -19,31 +20,41 @@ async def start_health_server():
     app.router.add_get("/", handle_health)
     runner = web.AppRunner(app)
     await runner.setup()
-    await web.TCPSite(runner, "0.0.0.0", 8000).start()
+    site = web.TCPSite(runner, "0.0.0.0", 8000)
+    await site.start()
 
 bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode="Markdown"))
 dp = Dispatcher()
 
-# GLOBAL BAN CHECK
+# --- FIXED GLOBAL CHECK ---
 @dp.message(F.chat.type == "private")
-async def check_ban_global(message: types.Message):
+async def check_user_status(message: types.Message, state: FSMContext):
     user = await db.users.find_one({"user_id": message.from_user.id})
+    
+    # Ban Check
     if user and user.get("is_banned"):
-        return # Blocked users don't get a response
+        return 
+
+    # Continue to next handler
+    await dp.propagate_event(message)
 
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear() 
-    user = await db.users.find_one({"user_id": message.from_user.id})
+    user_id = message.from_user.id
+    user = await db.users.find_one({"user_id": user_id})
+    
     if not user:
-        # DB-la basic fields initialize pandrom
-        await db.users.insert_one({
-            "user_id": message.from_user.id,
+        new_user = {
+            "user_id": user_id,
             "name": message.from_user.full_name,
+            "username": message.from_user.username,
             "joined_date": datetime.datetime.now().strftime("%Y-%m-%d"),
             "is_premium": False,
-            "is_banned": False
-        })
+            "is_banned": False,
+            "chat_count": 0
+        }
+        await db.users.insert_one(new_user)
         await bot.send_message(LOG_GROUP_1, f"🆕 New User: {message.from_user.full_name}")
         await state.set_state(states.Registration.state)
         await message.answer("Welcome! Select your State:", reply_markup=keyboards.get_state_keyboard())
@@ -52,6 +63,8 @@ async def cmd_start(message: types.Message, state: FSMContext):
 
 async def main():
     asyncio.create_task(start_health_server()) 
+    
+    # Order matters
     dp.include_router(admin.router)
     dp.include_router(premium.router)
     dp.include_router(registration.router)
@@ -59,6 +72,7 @@ async def main():
     dp.include_router(profile.router)
     dp.include_router(human_chat.router)
     dp.include_router(common.router) 
+    
     print("🚀 Bot is live on Koyeb!")
     await dp.start_polling(bot, skip_updates=True)
 
