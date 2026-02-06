@@ -6,7 +6,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.client.default import DefaultBotProperties
 from aiohttp import web
 from config import API_TOKEN, LOG_GROUP_1
-from handlers import registration, human_chat, chat_ai, common, profile, premium
+from handlers import registration, human_chat, chat_ai, common, profile, premium, admin
 from utils import keyboards, states
 from database import db
 
