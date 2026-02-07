@@ -1,8 +1,8 @@
 from aiogram import Router, F, types
 from aiogram.fsm.context import FSMContext
 from database import db
-from utils.keyboards import get_main_menu
-from utils.states import Registration # Reuse registration states for editing
+from utils.keyboards import get_main_menu, get_state_keyboard
+from utils.states import Registration
 
 router = Router()
 
@@ -10,19 +10,23 @@ router = Router()
 async def show_profile(callback: types.CallbackQuery):
     user = await db.users.find_one({"user_id": callback.from_user.id})
     
-    premium_status = "💎 Premium Member" if user.get("is_premium") else "🆓 Free User"
+    is_premium = user.get("is_premium", False)
+    premium_status = "💎 Premium Member" if is_premium else "🆓 Free User"
+    expiry_info = f"\n📅 Expires: {user.get('expiry_date')}" if is_premium else ""
     
     text = (
         f"👤 **YOUR PROFILE**\n"
         f"━━━━━━━━━━━━━━\n"
-        f"📛 Name: {user['name']}\n"
-        f"👫 Gender: {user['gender']}\n"
-        f"🎂 Age: {user['age']}\n"
-        f"📍 State: {user['state']}\n"
-        f"🌟 Status: {premium_status}\n"
+        f"📛 Name: {user.get('name')}\n"
+        f"👫 Gender: {user.get('gender')}\n"
+        f"🎂 Age: {user.get('age')}\n"
+        f"📍 State: {user.get('state')}\n"
+        f"🌟 Status: {premium_status}{expiry_info}\n"
         f"━━━━━━━━━━━━━━\n"
-        f"Edit option is only for Premium users! ✨"
     )
+    
+    if not is_premium:
+        text += "💡 *Tip: Upgrade to Premium to edit your profile anytime!* ✨"
     
     kb = types.InlineKeyboardMarkup(inline_keyboard=[
         [types.InlineKeyboardButton(text="✍️ Edit Profile", callback_data="edit_profile")],
@@ -36,14 +40,12 @@ async def edit_profile_check(callback: types.CallbackQuery, state: FSMContext):
     user = await db.users.find_one({"user_id": callback.from_user.id})
     
     if not user.get("is_premium"):
-        return await callback.answer("❌ Edit option only for Premium users!", show_alert=True)
+        return await callback.answer("❌ Profile editing is for Premium users only! 💎", show_alert=True)
     
-    # Start re-registration flow for editing
-    await state.set_state(Registration.state) # Or create a dedicated EditState
-    from utils.keyboards import get_state_keyboard
+    await state.set_state(Registration.state)
     await callback.message.edit_text("🔄 **Editing Profile**\nSelect your State again:", reply_markup=get_state_keyboard())
 
-@router.message(F.text == "/edit_profile")
+@router.message(Command("edit_profile")) # Changed to proper filter
 async def edit_profile_cmd(message: types.Message, state: FSMContext):
     user = await db.users.find_one({"user_id": message.from_user.id})
     
@@ -51,10 +53,9 @@ async def edit_profile_cmd(message: types.Message, state: FSMContext):
         return await message.answer("❌ This command is only for Premium users! 💎")
     
     await state.set_state(Registration.state)
-    from utils.keyboards import get_state_keyboard
     await message.answer("🔄 **Editing Profile**\nSelect your State:", reply_markup=get_state_keyboard())
 
 @router.callback_query(F.data == "main_menu")
 async def back_to_main(callback: types.CallbackQuery):
-    await callback.message.edit_text("Main Menu:", reply_markup=get_main_menu())
-  
+    await callback.message.edit_text("✨ *Main Menu*", reply_markup=get_main_menu())
+    
