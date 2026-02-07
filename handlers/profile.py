@@ -1,4 +1,5 @@
 from aiogram import Router, F, types
+from aiogram.filters import Command  # INDHA LINE MISSING!
 from aiogram.fsm.context import FSMContext
 from database import db
 from utils.keyboards import get_main_menu, get_state_keyboard
@@ -12,7 +13,11 @@ async def show_profile(callback: types.CallbackQuery):
     
     is_premium = user.get("is_premium", False)
     premium_status = "💎 Premium Member" if is_premium else "🆓 Free User"
-    expiry_info = f"\n📅 Expires: {user.get('expiry_date')}" if is_premium else ""
+    
+    # Expiry date display
+    expiry_info = ""
+    if is_premium and user.get("expiry_date"):
+        expiry_info = f"\n📅 Expires: `{user.get('expiry_date')}`"
     
     text = (
         f"👤 **YOUR PROFILE**\n"
@@ -45,7 +50,7 @@ async def edit_profile_check(callback: types.CallbackQuery, state: FSMContext):
     await state.set_state(Registration.state)
     await callback.message.edit_text("🔄 **Editing Profile**\nSelect your State again:", reply_markup=get_state_keyboard())
 
-@router.message(Command("edit_profile")) # Changed to proper filter
+@router.message(Command("edit_profile"))
 async def edit_profile_cmd(message: types.Message, state: FSMContext):
     user = await db.users.find_one({"user_id": message.from_user.id})
     
