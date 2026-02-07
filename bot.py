@@ -32,16 +32,28 @@ async def ban_check_middleware(handler, event, data):
     if isinstance(event, types.Message):
         user = await db.users.find_one({"user_id": event.from_user.id})
         if user and user.get("is_banned"):
-            return # Banned user na ignore pannidum
+            return 
     return await handler(event, data)
 
-# --- 2. START COMMAND ---
+# --- 2. START COMMAND WITH EXPIRY CHECK ---
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear() 
     user_id = message.from_user.id
     user = await db.users.find_one({"user_id": user_id})
     
+    # --- AUTOMATIC PREMIUM EXPIRY CHECK ---
+    if user and user.get("is_premium"):
+        expiry_str = user.get("expiry_date")
+        if expiry_str:
+            try:
+                expiry_date = datetime.datetime.strptime(expiry_str, "%Y-%m-%d")
+                if datetime.datetime.now() > expiry_date:
+                    await db.users.update_one({"user_id": user_id}, {"$set": {"is_premium": False}})
+                    await message.answer("⚠️ **Your Premium has expired!**\nBack to Free mode. Recharge to continue unlimited access! 💎")
+                    user["is_premium"] = False # Local update
+            except: pass
+
     if not user:
         new_user = {
             "user_id": user_id,
@@ -64,21 +76,19 @@ async def cmd_start(message: types.Message, state: FSMContext):
 async def main():
     asyncio.create_task(start_health_server()) 
     
-    # Register Routers
+    # Priority order
     dp.include_router(admin.router)
     dp.include_router(common.router)
     dp.include_router(premium.router)
+    dp.include_router(profile.router)
     dp.include_router(registration.router)
     dp.include_router(chat_ai.router)
-    dp.include_router(profile.router)
     dp.include_router(human_chat.router) 
     
-    # 3. FIX CONFLICT: DELETE WEBHOOK BEFORE STARTING
     await bot.delete_webhook(drop_pending_updates=True)
-    
     print("🚀 Bot is live on Koyeb!")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
-            
+                                              
