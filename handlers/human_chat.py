@@ -9,14 +9,27 @@ import asyncio
 
 router = Router()
 
-# --- HELPER: EXIT LOGIC ---
+# --- HELPER: EXIT LOGIC (With Message Deletion) ---
 async def exit_logic(message, state, user_id=None):
     uid = user_id or (message.chat.id if hasattr(message, 'chat') else message.from_user.id)
     user = await db.users.find_one({"user_id": uid})
     
     if user and user.get("partner"):
         partner_id = user.get("partner")
-        await db.users.update_many({"user_id": {"$in": [uid, partner_id]}}, {"$set": {"status": "idle", "partner": None}})
+        partner_data = await db.users.find_one({"user_id": partner_id})
+
+        # 1. DELETE PARTNER DETAILS (For both users)
+        try:
+            # User details msg delete
+            if user.get("conn_msg_id"):
+                await message.bot.delete_message(uid, user["conn_msg_id"])
+            # Partner details msg delete
+            if partner_data and partner_data.get("conn_msg_id"):
+                await message.bot.delete_message(partner_id, partner_data["conn_msg_id"])
+        except: pass
+
+        # Clear DB for both
+        await db.users.update_many({"user_id": {"$in": [uid, partner_id]}}, {"$set": {"status": "idle", "partner": None, "conn_msg_id": None}})
         
         kb = types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text="🚫 Report Partner", callback_data=f"report_{partner_id}")]])
         
@@ -38,15 +51,12 @@ async def exit_logic(message, state, user_id=None):
             await message.message.answer("Chat ended.", reply_markup=get_main_menu())
         else:
             await message.answer("Chat ended.", reply_markup=get_main_menu())
+    
     await state.clear()
 
 async def delete_after(message, delay: int):
     await asyncio.sleep(delay)
-    try:
-        if isinstance(message, types.Message):
-            await message.delete()
-        else: # If it's just a message ID
-            await bot.delete_message(chat_id=message['chat_id'], message_id=message['msg_id'])
+    try: await message.delete()
     except: pass
 
 async def find_partner(user_id):
@@ -54,10 +64,9 @@ async def find_partner(user_id):
 
 @router.callback_query(F.data == "exit_chat")
 async def exit_callback(callback: types.CallbackQuery, state: FSMContext):
-    await callback.answer("Ending chat...")
     await exit_logic(callback, state, callback.from_user.id)
 
-# --- SEARCH LOGIC (Updated for Deletion) ---
+# --- SEARCH & CONNECT LOGIC ---
 @router.callback_query(F.data == "chat_human")
 async def start_human_search(callback: types.CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
@@ -69,11 +78,11 @@ async def start_human_search(callback: types.CallbackQuery, state: FSMContext):
     now = datetime.datetime.now()
     
     if partner:
-        # Update both users to chatting
+        # DB Update
         await db.users.update_one({"user_id": user_id}, {"$set": {"status": "chatting", "partner": partner['user_id'], "chat_start": now}, "$inc": {"daily_chats": 1}})
         await db.users.update_one({"user_id": partner['user_id']}, {"$set": {"status": "chatting", "partner": user_id, "chat_start": now}, "$inc": {"daily_chats": 1}})
         
-        # Partner-oda search message-ah delete panna try panrom
+        # Delete old searching message from partner side
         if partner.get("last_search_msg_id"):
             try: await callback.bot.delete_message(partner['user_id'], partner['last_search_msg_id'])
             except: pass
@@ -82,33 +91,38 @@ async def start_human_search(callback: types.CallbackQuery, state: FSMContext):
             gender_text = p['gender'] if viewer_is_premium else "🔒 Locked (Premium Required) 💎"
             return f"💌 **Partner Details**\n━━━━━━━━━━━━━━\n👤 Gender: {gender_text}\n🎂 Age: {p['age']}\n📍 State: {p['state']}"
 
-        # Current user-oda search msg-ah partner details-ah edit panrom (so searching text delete aana maari aydum)
-        await callback.message.edit_text(f"{partner_info(partner, is_premium)}\n\nConnected! Start chatting!", reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text="🛑 Exit Chat", callback_data="exit_chat")]]))
+        # Connect user and SAVE the message ID
+        msg_to_user = await callback.message.edit_text(f"{partner_info(partner, is_premium)}\n\nConnected! Start chatting!", reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text="🛑 Exit Chat", callback_data="exit_chat")]]))
+        await db.users.update_one({"user_id": user_id}, {"$set": {"conn_msg_id": msg_to_user.message_id}})
         
-        # Partner-ku fresh-ah connection msg anupuroam
-        await callback.bot.send_message(partner['user_id'], f"{partner_info(user_data, partner.get('is_premium'))}\n\nConnected! Start chatting!", reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text="🛑 Exit Chat", callback_data="exit_chat")]]))
+        # Connect partner and SAVE the message ID
+        msg_to_partner = await callback.bot.send_message(partner['user_id'], f"{partner_info(user_data, partner.get('is_premium'))}\n\nConnected! Start chatting!", reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text="🛑 Exit Chat", callback_data="exit_chat")]]))
+        await db.users.update_one({"user_id": partner['user_id']}, {"$set": {"conn_msg_id": msg_to_partner.message_id}})
     else:
-        # Search msg ID-ah store panrom so cancel panumbodhu delete panna mudiyum
         await db.users.update_one({"user_id": user_id}, {"$set": {"status": "searching", "last_search_msg_id": callback.message.message_id}})
         await callback.message.edit_text("🔍 Searching for a partner...", reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text="❌ Cancel", callback_data="cancel_search")]]))
 
-# --- CANCEL SEARCH FIX ---
 @router.callback_query(F.data == "cancel_search")
 async def cancel_search(callback: types.CallbackQuery, state: FSMContext):
     await db.users.update_one({"user_id": callback.from_user.id}, {"$set": {"status": "idle"}})
-    await callback.answer("Search cancelled.")
-    await callback.message.delete() # Searching message-ah delete pannidum
+    await callback.message.delete()
     await callback.message.answer("Main Menu:", reply_markup=get_main_menu())
 
-# --- MESSAGE RELAY & LOGS ---
+# --- MESSAGE RELAY & COMMAND BLOCKER ---
 @router.message(F.chat.type == "private")
 async def relay_handler(message: types.Message, state: FSMContext):
+    user = await db.users.find_one({"user_id": message.from_user.id})
+    is_chatting = user and user.get("status") == "chatting"
+
+    # 2. COMMAND BLOCKER LOGIC
     if message.text and message.text.startswith("/"):
-        if message.text == "/exit": return await exit_logic(message, state)
+        if message.text == "/exit":
+            return await exit_logic(message, state)
+        elif is_chatting:
+            return await message.answer("Hey 👩‍❤️‍👨 you’re in a chat right now.\nUse /exit 🚪 to continue.")
         return
 
-    user = await db.users.find_one({"user_id": message.from_user.id})
-    if not user or user.get("status") != "chatting":
+    if not is_chatting:
         if message.text or message.photo or message.video:
             return await message.answer("⚠️ **Not Connected!**\nPlease click 'Chat with Human' first to find a partner. ❤️")
         return
@@ -129,7 +143,7 @@ async def relay_handler(message: types.Message, state: FSMContext):
         else:
             if not is_premium:
                 elapsed = (datetime.datetime.now() - user.get("chat_start")).total_seconds()
-                if elapsed < 180: return await message.answer(f"⏳ Media enabled in {int(180 - elapsed)}s.")
+                if elapsed < 180: return await message.answer(f"⏳ Media enabled in {int(180 - elapsed)}seconds. Upgrade to Premium for instant share! 💎")
             await message.bot.send_message(LOG_GROUP_2, log_header)
             await message.forward(LOG_GROUP_2)
             if message.photo: await message.bot.send_photo(partner_id, message.photo[-1].file_id, caption=message.caption)
@@ -137,4 +151,4 @@ async def relay_handler(message: types.Message, state: FSMContext):
             elif message.document: await message.bot.send_document(partner_id, message.document.file_id, caption=message.caption)
             elif message.animation: await message.bot.send_animation(partner_id, message.animation.file_id)
     except: pass
-            
+        
