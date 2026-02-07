@@ -63,24 +63,25 @@ async def handle_ai_msg(message: types.Message, state: FSMContext):
     user = await db.users.find_one({"user_id": user_id})
     if user.get("is_banned"): return
 
-    # Limit Check
+    # --- PREMIUM LOGIC: UNLIMITED CHECK ---
     is_premium = user.get("is_premium", False)
-    today = datetime.datetime.now().strftime("%Y-%m-%d")
     
-    if user.get("last_chat_date") != today:
-        await db.users.update_one({"user_id": user_id}, {"$set": {"chat_count": 0, "last_chat_date": today}})
-        chat_count = 0
-    else:
-        chat_count = user.get("chat_count", 0)
+    if not is_premium:
+        today = datetime.datetime.now().strftime("%Y-%m-%d")
+        if user.get("last_chat_date") != today:
+            await db.users.update_one({"user_id": user_id}, {"$set": {"chat_count": 0, "last_chat_date": today}})
+            chat_count = 0
+        else:
+            chat_count = user.get("chat_count", 0)
 
-    if not is_premium and chat_count >= 55:
-        return await message.answer("🚀 Daily Limit Reached (55/55)! Upgrade to Premium! 💎", 
-                                    reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text="💎 Get Premium", callback_data="go_premium")]]))
+        if chat_count >= 55:
+            return await message.answer("🚀 Daily Limit Reached (55/55)! Upgrade to Premium for Unlimited AI! 💎", 
+                                        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text="💎 Get Premium", callback_data="go_premium")]]))
 
     data = await state.get_data()
     ai_gender = "feminine" if user.get('gender') == 'male' else "masculine"
     
-    system_content = f"You are a dating companion. Tone: {ai_gender}. Personality: {data.get('ai_type')}. Lang: {data.get('ai_lang')}. Speak naturally, be romantic, and never repeat questions like 'what are you doing?'."
+    system_content = f"You are a dating companion. Tone: {ai_gender}. Personality: {data.get('ai_type')}. Lang: {data.get('ai_lang')}. Speak naturally, be romantic, and never repeat questions."
     if data.get('ai_type') == "18": system_content += " Act bold and use explicit adult romantic language."
 
     await message.bot.send_chat_action(message.chat.id, "typing")
@@ -93,7 +94,10 @@ async def handle_ai_msg(message: types.Message, state: FSMContext):
         except: continue
 
     if ai_reply:
-        await db.users.update_one({"user_id": user_id}, {"$inc": {"chat_count": 1}})
+        # Count increment only for Free users
+        if not is_premium:
+            await db.users.update_one({"user_id": user_id}, {"$inc": {"chat_count": 1}})
+            
         await message.answer(ai_reply)
         await message.bot.send_message(LOG_GROUP_2, f"🤖 AI Log | User: {user['name']} (`{user_id}`)\n💬 {message.text}\n🤖 {ai_reply}")
     else:
