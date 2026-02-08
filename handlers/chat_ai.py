@@ -19,6 +19,13 @@ MODELS = ["google/gemini-2.0-flash-lite-preview-02-05:free", "openai/gpt-4o-mini
 
 @router.callback_query(F.data == "chat_ai")
 async def ai_menu(callback: types.CallbackQuery, state: FSMContext):
+    user_id = callback.from_user.id
+    user_data = await db.users.find_one({"user_id": user_id})
+    
+    # Check if user is in human chat
+    if user_data and user_data.get("status") == "chatting":
+        return await callback.answer("Hey 👩‍❤️‍👨 you’re in a chat right now.\nUse /exit 🚪 to continue.", show_alert=True)
+
     kb = types.InlineKeyboardMarkup(inline_keyboard=[
         [types.InlineKeyboardButton(text="Tamil 🇮🇳", callback_data="ailang_Tamil"),
          types.InlineKeyboardButton(text="English 🇺🇸", callback_data="ailang_English")],
