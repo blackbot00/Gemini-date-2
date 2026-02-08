@@ -101,7 +101,6 @@ async def start_human_search(callback: types.CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     user_data = await db.users.find_one({"user_id": user_id})
     
-    # Check if user is already chatting
     if user_data and user_data.get("status") == "chatting":
         return await callback.answer("Hey 👩‍❤️‍👨 you’re in a chat right now.\nUse /exit 🚪 to continue.", show_alert=True)
     
@@ -116,7 +115,7 @@ async def start_human_search(callback: types.CallbackQuery, state: FSMContext):
             try: await callback.bot.delete_message(partner['user_id'], partner['last_search_msg_id'])
             except: pass
         def p_info(p, prem):
-            g = p['gender'] if prem else "🔒 Locked 💎"
+            g = p['gender'] if prem else "🔒 Locked 💎 Premium Only"
             return f"💌 **Partner Details**\n━━━━━━━━━━━━━━\n👤 Gender: {g}\n🎂 Age: {p['age']}\n📍 State: {p['state']}"
         
         u_m = await callback.message.edit_text(f"{p_info(partner, is_premium)}\n\nConnected! Start chatting!", reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text="🛑 Exit Chat", callback_data="exit_chat")]]))
@@ -133,7 +132,7 @@ async def cancel_search(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.delete()
     await callback.message.answer("Search cancelled.", reply_markup=get_main_menu())
 
-# --- MESSAGE RELAY ---
+# --- MESSAGE RELAY (FIXED TO ALLOW OTHER COMMANDS) ---
 @router.message(F.chat.type == "private")
 async def relay_handler(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
@@ -142,10 +141,12 @@ async def relay_handler(message: types.Message, state: FSMContext):
     user = await db.users.find_one({"user_id": message.from_user.id})
     is_chatting = user and user.get("status") == "chatting"
 
+    # Important Fix: If it's a command, handle /exit and skip relay for others
     if message.text and message.text.startswith("/"):
         if message.text == "/exit":
             return await exit_logic(message, state)
-        # /start and others will work normally (Show Menu)
+        # Any other command (/chat, /premium, etc.) will be IGNORED by this handler 
+        # so they can be caught by their respective routers.
         return 
 
     if not is_chatting:
