@@ -168,4 +168,4 @@ async def relay_handler(message: types.Message, state: FSMContext):
             elif message.document: await message.bot.send_document(partner_id, message.document.file_id, caption=message.caption)
             elif message.animation: await message.bot.send_animation(partner_id, message.animation.file_id)
     except: pass
-                            
+    
