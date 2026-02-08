@@ -28,7 +28,6 @@ async def exit_logic(message, state, user_id=None):
 
         await db.users.update_many({"user_id": {"$in": [uid, partner_id]}}, {"$set": {"status": "idle", "partner": None, "conn_msg_id": None}})
         
-        # Initial Report Button
         report_kb = types.InlineKeyboardMarkup(inline_keyboard=[
             [types.InlineKeyboardButton(text="🚫 Report Your Partner", callback_data=f"ask_rep_{partner_id}")]
         ])
@@ -55,29 +54,36 @@ async def exit_logic(message, state, user_id=None):
     
     await state.clear()
 
-# --- 2. STEP REPORT LOGIC ---
+# --- REPORT LOGIC (YOUR FORMAT) ---
 @router.callback_query(F.data.startswith("ask_rep_"))
 async def ask_report_reason(callback: types.CallbackQuery):
     target_id = callback.data.split("_")[2]
-    # Neenga ketta maari Abuse, Scam, Adult options inga varum
     reason_kb = types.InlineKeyboardMarkup(inline_keyboard=[
-        [types.InlineKeyboardButton(text="🤬 Abuse", callback_data=f"final_rep_abuse_{target_id}"),
-         types.InlineKeyboardButton(text="💸 Scam", callback_data=f"final_rep_scam_{target_id}")],
-        [types.InlineKeyboardButton(text="🔞 Adult Content", callback_data=f"final_rep_adult_{target_id}")]
+        [types.InlineKeyboardButton(text="🤬 Abuse", callback_data=f"final_rep_Abuse_{target_id}"),
+         types.InlineKeyboardButton(text="💸 Scam", callback_data=f"final_rep_Scam_{target_id}")],
+        [types.InlineKeyboardButton(text="🔞 Adult Content", callback_data=f"final_rep_Adult_{target_id}")]
     ])
     await callback.message.edit_text("Select the reason for reporting:", reply_markup=reason_kb)
 
 @router.callback_query(F.data.startswith("final_rep_"))
 async def final_report(callback: types.CallbackQuery):
     _, _, reason, target_id = callback.data.split("_")
-    await callback.bot.send_message(
-        LOG_GROUP_1, 
-        f"🚩 **USER REPORTED**\n\nReporter: {callback.from_user.full_name}\nReported ID: `{target_id}`\nReason: {reason.upper()}"
+    reported_user = await db.users.find_one({"user_id": int(target_id)})
+    reported_name = reported_user['name'] if reported_user else "Unknown"
+
+    report_log = (
+        "🚷 **New Report Submitted** 🚷\n"
+        "━━━━━━━━━━━━━━\n"
+        f"Reporter: {callback.from_user.full_name} (`{callback.from_user.id}`)\n"
+        f"Reported: {reported_name} (`{target_id}`)\n\n"
+        f"Reason: **{reason}**"
     )
+    
+    await callback.bot.send_message(LOG_GROUP_1, report_log)
     await callback.answer("Report sent to Admin! ✅", show_alert=True)
     await callback.message.delete()
 
-# --- (Other search/cancel handlers same as before) ---
+# --- SEARCH LOGIC ---
 async def delete_after(message, delay: int):
     await asyncio.sleep(delay)
     try: await message.delete()
@@ -99,19 +105,19 @@ async def start_human_search(callback: types.CallbackQuery, state: FSMContext):
     partner = await find_partner(user_id)
     now = datetime.datetime.now()
     if partner:
-        await db.users.update_many({"user_id": {"$in": [user_id, partner['user_id']]}}, {"$set": {"status": "chatting", "chat_start": now}})
-        await db.users.update_one({"user_id": user_id}, {"$set": {"partner": partner['user_id']}})
-        await db.users.update_one({"user_id": partner['user_id']}, {"$set": {"partner": user_id}})
+        await db.users.update_one({"user_id": user_id}, {"$set": {"status": "chatting", "partner": partner['user_id'], "chat_start": now}, "$inc": {"daily_chats": 1}})
+        await db.users.update_one({"user_id": partner['user_id']}, {"$set": {"status": "chatting", "partner": user_id, "chat_start": now}, "$inc": {"daily_chats": 1}})
         if partner.get("last_search_msg_id"):
             try: await callback.bot.delete_message(partner['user_id'], partner['last_search_msg_id'])
             except: pass
-        def partner_info(p, premium):
-            g = p['gender'] if premium else "🔒 Locked 💎"
+        def p_info(p, prem):
+            g = p['gender'] if prem else "🔒 Locked 💎"
             return f"💌 **Partner Details**\n━━━━━━━━━━━━━━\n👤 Gender: {g}\n🎂 Age: {p['age']}\n📍 State: {p['state']}"
-        u_msg = await callback.message.edit_text(f"{partner_info(partner, is_premium)}\n\nConnected! Start chatting!", reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text="🛑 Exit Chat", callback_data="exit_chat")]]))
-        await db.users.update_one({"user_id": user_id}, {"$set": {"conn_msg_id": u_msg.message_id}})
-        p_msg = await callback.bot.send_message(partner['user_id'], f"{partner_info(user_data, partner.get('is_premium'))}\n\nConnected! Start chatting!", reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text="🛑 Exit Chat", callback_data="exit_chat")]]))
-        await db.users.update_one({"user_id": partner['user_id']}, {"$set": {"conn_msg_id": p_msg.message_id}})
+        
+        u_m = await callback.message.edit_text(f"{p_info(partner, is_premium)}\n\nConnected! Start chatting!", reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text="🛑 Exit Chat", callback_data="exit_chat")]]))
+        await db.users.update_one({"user_id": user_id}, {"$set": {"conn_msg_id": u_m.message_id}})
+        p_m = await callback.bot.send_message(partner['user_id'], f"{p_info(user_data, partner.get('is_premium'))}\n\nConnected! Start chatting!", reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text="🛑 Exit Chat", callback_data="exit_chat")]]))
+        await db.users.update_one({"user_id": partner['user_id']}, {"$set": {"conn_msg_id": p_m.message_id}})
     else:
         await db.users.update_one({"user_id": user_id}, {"$set": {"status": "searching", "last_search_msg_id": callback.message.message_id}})
         await callback.message.edit_text("🔍 Searching for a partner...", reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text="❌ Cancel", callback_data="cancel_search")]]))
@@ -122,7 +128,7 @@ async def cancel_search(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.delete()
     await callback.message.answer("Search cancelled.", reply_markup=get_main_menu())
 
-# --- MESSAGE RELAY (FIXED COMMAND BLOCK) ---
+# --- MESSAGE RELAY (FIXED ID & START BLOCK) ---
 @router.message(F.chat.type == "private")
 async def relay_handler(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
@@ -131,36 +137,37 @@ async def relay_handler(message: types.Message, state: FSMContext):
     user = await db.users.find_one({"user_id": message.from_user.id})
     is_chatting = user and user.get("status") == "chatting"
 
-    # 1. FIX: /start BLOCK LOGIC
+    # 1. SOLID /START & COMMAND BLOCK
     if message.text and message.text.startswith("/"):
         if message.text == "/exit":
             return await exit_logic(message, state)
         elif is_chatting:
-            # Idhu /start, /premium, /profile ellathaiyum block pannum
+            # Idhu kandippa block pannum, provided router order is correct in bot.py
             return await message.answer("Hey 👩‍❤️‍👨 you’re in a chat right now.\nUse /exit 🚪 to continue.")
-        return # Let other routers handle it if NOT chatting
+        return 
 
     if not is_chatting:
-        if not (message.text and message.text.startswith("/")):
+        if message.text or message.photo or message.video:
             return await message.answer("⚠️ **Not Connected!**\nPlease click 'Chat with Human' first to find a partner. ❤️")
         return
 
     partner_id = user.get("partner")
     is_premium = user.get("is_premium", False)
     partner_data = await db.users.find_one({"user_id": partner_id})
-    log_header = f"📤({user['name']}) ➜ ({partner_data['name']}) 📩"
+    
+    # 3. CHAT LOG WITH ID (FIXED)
+    log_header = f"📤 **{user['name']}** (`{user['user_id']}`) ➜ **{partner_data['name']}** (`{partner_id}`) 📩"
 
     try:
         if message.text:
-            if not is_premium:
-                if any(x in message.text.lower() for x in ["http", ".com", ".in", "@", "t.me"]):
-                    return await message.answer("⚠️ Links/Usernames are blocked! 💎")
+            if not is_premium and any(x in message.text.lower() for x in ["http", ".com", ".in", "@", "t.me"]):
+                return await message.answer("⚠️ Links/Usernames are blocked! for free users 💎")
             await message.bot.send_message(partner_id, message.text)
             await message.bot.send_message(LOG_GROUP_2, f"{log_header}\n💬 {message.text}")
         else:
             if not is_premium:
                 elapsed = (datetime.datetime.now() - user.get("chat_start")).total_seconds()
-                if elapsed < 180: return await message.answer(f"⏳ Media enabled in {int(180 - elapsed)}s.")
+                if elapsed < 180: return await message.answer(f"⏳ Media enabled in {int(180 - elapsed)}s. 💎upgrade to premium to instant share media 💖")
             await message.bot.send_message(LOG_GROUP_2, log_header)
             await message.forward(LOG_GROUP_2)
             if message.photo: await message.bot.send_photo(partner_id, message.photo[-1].file_id, caption=message.caption)
