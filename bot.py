@@ -80,9 +80,9 @@ async def main():
     dp.include_router(admin.router)
     dp.include_router(chat_ai.router)
     dp.include_router(common.router)
-    dp.include_router(human_chat.router)
     dp.include_router(premium.router)
     dp.include_router(profile.router)
+    dp.include_router(human_chat.router)
     dp.include_router(registration.router) 
     
     await bot.delete_webhook(drop_pending_updates=True)
