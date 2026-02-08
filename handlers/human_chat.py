@@ -132,23 +132,26 @@ async def cancel_search(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.delete()
     await callback.message.answer("Search cancelled.", reply_markup=get_main_menu())
 
-# --- MESSAGE RELAY (FIXED TO ALLOW OTHER COMMANDS) ---
+# --- MESSAGE RELAY (FIXED) ---
 @router.message(F.chat.type == "private")
 async def relay_handler(message: types.Message, state: FSMContext):
+    # 1. AI Chat check
     current_state = await state.get_state()
-    if current_state == ChatState.on_ai_chat: return
+    if current_state == ChatState.on_ai_chat: 
+        return
+
+    # 2. Command check
+    if message.text and message.text.startswith("/"):
+        if message.text == "/exit":
+            return await exit_logic(message, state)
+        # /start, /premium etc. anupuna relay ignore pannanum (DO NOT RETURN NOTHING)
+        # Aiogram auto-va next router handle panna allow pannanum
+        return 
 
     user = await db.users.find_one({"user_id": message.from_user.id})
     is_chatting = user and user.get("status") == "chatting"
 
-    # Important Fix: If it's a command, handle /exit and skip relay for others
-    if message.text and message.text.startswith("/"):
-        if message.text == "/exit":
-            return await exit_logic(message, state)
-        # Any other command (/chat, /premium, etc.) will be IGNORED by this handler 
-        # so they can be caught by their respective routers.
-        return 
-
+    # 3. Connection check (Non-commands only)
     if not is_chatting:
         if message.text or message.photo or message.video:
             return await message.answer("⚠️ **Not Connected!**\nPlease click 'Chat with Human' first to find a partner. ❤️")
