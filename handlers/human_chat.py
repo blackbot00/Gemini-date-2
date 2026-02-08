@@ -19,7 +19,6 @@ async def exit_logic(message, state, user_id=None):
         partner_id = user.get("partner")
         partner_data = await db.users.find_one({"user_id": partner_id})
 
-        # 1. AUTO DELETE PARTNER DETAILS MSG
         try:
             if user.get("conn_msg_id"):
                 await message.bot.delete_message(uid, user["conn_msg_id"])
@@ -27,31 +26,26 @@ async def exit_logic(message, state, user_id=None):
                 await message.bot.delete_message(partner_id, partner_data["conn_msg_id"])
         except: pass
 
-        # DB Cleanup
         await db.users.update_many({"user_id": {"$in": [uid, partner_id]}}, {"$set": {"status": "idle", "partner": None, "conn_msg_id": None}})
         
-        # OLD REPORT MODEL KEYBOARD
+        # Initial Report Button
         report_kb = types.InlineKeyboardMarkup(inline_keyboard=[
-            [types.InlineKeyboardButton(text="🚫 Abuse", callback_data=f"rep_abuse_{partner_id}"),
-             types.InlineKeyboardButton(text="💸 Scam", callback_data=f"rep_scam_{partner_id}")],
-            [types.InlineKeyboardButton(text="🔞 Adult Content", callback_data=f"rep_adult_{partner_id}")]
+            [types.InlineKeyboardButton(text="🚫 Report Your Partner", callback_data=f"ask_rep_{partner_id}")]
         ])
         
-        # Notifications
         await message.bot.send_message(partner_id, "⚠️ Partner left the chat.", reply_markup=get_main_menu())
-        m1 = await message.bot.send_message(partner_id, "Report partner if they misbehaved (15s):", reply_markup=report_kb)
+        m1 = await message.bot.send_message(partner_id, "Click below to report:", reply_markup=report_kb)
         
         final_text = "Chat ended. Hope you found someone special! ❤️"
         if isinstance(message, types.CallbackQuery):
             await message.message.answer(final_text, reply_markup=get_main_menu())
-            m2 = await message.message.answer("Report partner if they misbehaved (15s):", reply_markup=report_kb)
+            m2 = await message.message.answer("Click below to report:", reply_markup=report_kb)
         else:
             await message.answer(final_text, reply_markup=get_main_menu())
-            m2 = await message.answer("Report partner if they misbehaved (15s):", reply_markup=report_kb)
+            m2 = await message.answer("Click below to report:", reply_markup=report_kb)
         
-        # Auto delete report buttons
-        asyncio.create_task(delete_after(m1, 15))
-        asyncio.create_task(delete_after(m2, 15))
+        asyncio.create_task(delete_after(m1, 20))
+        asyncio.create_task(delete_after(m2, 20))
     else:
         await db.users.update_one({"user_id": uid}, {"$set": {"status": "idle", "partner": None}})
         if isinstance(message, types.CallbackQuery):
@@ -61,6 +55,29 @@ async def exit_logic(message, state, user_id=None):
     
     await state.clear()
 
+# --- 2. STEP REPORT LOGIC ---
+@router.callback_query(F.data.startswith("ask_rep_"))
+async def ask_report_reason(callback: types.CallbackQuery):
+    target_id = callback.data.split("_")[2]
+    # Neenga ketta maari Abuse, Scam, Adult options inga varum
+    reason_kb = types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton(text="🤬 Abuse", callback_data=f"final_rep_abuse_{target_id}"),
+         types.InlineKeyboardButton(text="💸 Scam", callback_data=f"final_rep_scam_{target_id}")],
+        [types.InlineKeyboardButton(text="🔞 Adult Content", callback_data=f"final_rep_adult_{target_id}")]
+    ])
+    await callback.message.edit_text("Select the reason for reporting:", reply_markup=reason_kb)
+
+@router.callback_query(F.data.startswith("final_rep_"))
+async def final_report(callback: types.CallbackQuery):
+    _, _, reason, target_id = callback.data.split("_")
+    await callback.bot.send_message(
+        LOG_GROUP_1, 
+        f"🚩 **USER REPORTED**\n\nReporter: {callback.from_user.full_name}\nReported ID: `{target_id}`\nReason: {reason.upper()}"
+    )
+    await callback.answer("Report sent to Admin! ✅", show_alert=True)
+    await callback.message.delete()
+
+# --- (Other search/cancel handlers same as before) ---
 async def delete_after(message, delay: int):
     await asyncio.sleep(delay)
     try: await message.delete()
@@ -69,51 +86,30 @@ async def delete_after(message, delay: int):
 async def find_partner(user_id):
     return await db.users.find_one({"status": "searching", "user_id": {"$ne": user_id}})
 
-# --- MULTI-REPORT HANDLER ---
-@router.callback_query(F.data.startswith("rep_"))
-async def report_user_v2(callback: types.CallbackQuery):
-    _, reason, target_id = callback.data.split("_")
-    
-    await callback.bot.send_message(
-        LOG_GROUP_1, 
-        f"🚩 **USER REPORTED**\n\n"
-        f"👤 Reporter: {callback.from_user.full_name} (`{callback.from_user.id}`)\n"
-        f"🚫 Reported ID: `{target_id}`\n"
-        f"📌 Reason: **{reason.upper()}**"
-    )
-    await callback.answer(f"Report for {reason} sent to Admin! ✅", show_alert=True)
-    await callback.message.delete()
-
 @router.callback_query(F.data == "exit_chat")
 async def exit_callback(callback: types.CallbackQuery, state: FSMContext):
     await exit_logic(callback, state, callback.from_user.id)
 
-# --- SEARCH LOGIC ---
 @router.callback_query(F.data == "chat_human")
 async def start_human_search(callback: types.CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     user_data = await db.users.find_one({"user_id": user_id})
     if not user_data: return await callback.answer("⚠️ Register first!", show_alert=True)
-
     is_premium = user_data.get("is_premium", False)
     partner = await find_partner(user_id)
     now = datetime.datetime.now()
-    
     if partner:
-        await db.users.update_one({"user_id": user_id}, {"$set": {"status": "chatting", "partner": partner['user_id'], "chat_start": now}, "$inc": {"daily_chats": 1}})
-        await db.users.update_one({"user_id": partner['user_id']}, {"$set": {"status": "chatting", "partner": user_id, "chat_start": now}, "$inc": {"daily_chats": 1}})
-        
+        await db.users.update_many({"user_id": {"$in": [user_id, partner['user_id']]}}, {"$set": {"status": "chatting", "chat_start": now}})
+        await db.users.update_one({"user_id": user_id}, {"$set": {"partner": partner['user_id']}})
+        await db.users.update_one({"user_id": partner['user_id']}, {"$set": {"partner": user_id}})
         if partner.get("last_search_msg_id"):
             try: await callback.bot.delete_message(partner['user_id'], partner['last_search_msg_id'])
             except: pass
-
-        def partner_info(p, viewer_is_premium):
-            gender_text = p['gender'] if viewer_is_premium else "🔒 Locked (Premium Required) 💎"
-            return f"💌 **Partner Details**\n━━━━━━━━━━━━━━\n👤 Gender: {gender_text}\n🎂 Age: {p['age']}\n📍 State: {p['state']}"
-
+        def partner_info(p, premium):
+            g = p['gender'] if premium else "🔒 Locked 💎"
+            return f"💌 **Partner Details**\n━━━━━━━━━━━━━━\n👤 Gender: {g}\n🎂 Age: {p['age']}\n📍 State: {p['state']}"
         u_msg = await callback.message.edit_text(f"{partner_info(partner, is_premium)}\n\nConnected! Start chatting!", reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text="🛑 Exit Chat", callback_data="exit_chat")]]))
         await db.users.update_one({"user_id": user_id}, {"$set": {"conn_msg_id": u_msg.message_id}})
-        
         p_msg = await callback.bot.send_message(partner['user_id'], f"{partner_info(user_data, partner.get('is_premium'))}\n\nConnected! Start chatting!", reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text="🛑 Exit Chat", callback_data="exit_chat")]]))
         await db.users.update_one({"user_id": partner['user_id']}, {"$set": {"conn_msg_id": p_msg.message_id}})
     else:
@@ -126,42 +122,39 @@ async def cancel_search(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.delete()
     await callback.message.answer("Search cancelled.", reply_markup=get_main_menu())
 
-# --- MESSAGE RELAY (WITH ALL FIXES) ---
+# --- MESSAGE RELAY (FIXED COMMAND BLOCK) ---
 @router.message(F.chat.type == "private")
 async def relay_handler(message: types.Message, state: FSMContext):
-    # 1. AI CHAT CHECK (Prevent Not Connected Error)
     current_state = await state.get_state()
-    if current_state == ChatState.on_ai_chat:
-        return
+    if current_state == ChatState.on_ai_chat: return
 
     user = await db.users.find_one({"user_id": message.from_user.id})
     is_chatting = user and user.get("status") == "chatting"
 
-    # 2. COMMAND BLOCKER
+    # 1. FIX: /start BLOCK LOGIC
     if message.text and message.text.startswith("/"):
         if message.text == "/exit":
             return await exit_logic(message, state)
         elif is_chatting:
+            # Idhu /start, /premium, /profile ellathaiyum block pannum
             return await message.answer("Hey 👩‍❤️‍👨 you’re in a chat right now.\nUse /exit 🚪 to continue.")
-        return # Let other routers handle if not chatting
+        return # Let other routers handle it if NOT chatting
 
-    # 3. CONNECTION CHECK
     if not is_chatting:
-        if message.text or message.photo or message.video:
+        if not (message.text and message.text.startswith("/")):
             return await message.answer("⚠️ **Not Connected!**\nPlease click 'Chat with Human' first to find a partner. ❤️")
         return
 
     partner_id = user.get("partner")
     is_premium = user.get("is_premium", False)
     partner_data = await db.users.find_one({"user_id": partner_id})
-    log_header = f"📤({user['name']})[`{user['user_id']}`] ➜ ({partner_data['name']})[`{partner_id}`] 📩"
+    log_header = f"📤({user['name']}) ➜ ({partner_data['name']}) 📩"
 
     try:
         if message.text:
             if not is_premium:
-                forbidden = ["http", ".com", ".in", "@", "t.me"]
-                if any(x in message.text.lower() for x in forbidden):
-                    return await message.answer("⚠️ Links/Usernames are blocked for Free users! 💎")
+                if any(x in message.text.lower() for x in ["http", ".com", ".in", "@", "t.me"]):
+                    return await message.answer("⚠️ Links/Usernames are blocked! 💎")
             await message.bot.send_message(partner_id, message.text)
             await message.bot.send_message(LOG_GROUP_2, f"{log_header}\n💬 {message.text}")
         else:
@@ -175,4 +168,4 @@ async def relay_handler(message: types.Message, state: FSMContext):
             elif message.document: await message.bot.send_document(partner_id, message.document.file_id, caption=message.caption)
             elif message.animation: await message.bot.send_animation(partner_id, message.animation.file_id)
     except: pass
-    
+                            
