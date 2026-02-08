@@ -43,8 +43,8 @@ async def exit_logic(message, state, user_id=None):
             await message.answer(final_text, reply_markup=get_main_menu())
             m2 = await message.answer("Click below to report:", reply_markup=report_kb)
         
-        asyncio.create_task(delete_after(m1, 20))
-        asyncio.create_task(delete_after(m2, 20))
+        asyncio.create_task(delete_after(m1, 9))
+        asyncio.create_task(delete_after(m2, 9))
     else:
         await db.users.update_one({"user_id": uid}, {"$set": {"status": "idle", "partner": None}})
         if isinstance(message, types.CallbackQuery):
@@ -54,7 +54,7 @@ async def exit_logic(message, state, user_id=None):
     
     await state.clear()
 
-# --- REPORT LOGIC (YOUR FORMAT) ---
+# --- 2-STEP REPORT LOGIC ---
 @router.callback_query(F.data.startswith("ask_rep_"))
 async def ask_report_reason(callback: types.CallbackQuery):
     target_id = callback.data.split("_")[2]
@@ -100,6 +100,11 @@ async def exit_callback(callback: types.CallbackQuery, state: FSMContext):
 async def start_human_search(callback: types.CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     user_data = await db.users.find_one({"user_id": user_id})
+    
+    # Check if user is already chatting
+    if user_data and user_data.get("status") == "chatting":
+        return await callback.answer("Hey 👩‍❤️‍👨 you’re in a chat right now.\nUse /exit 🚪 to continue.", show_alert=True)
+    
     if not user_data: return await callback.answer("⚠️ Register first!", show_alert=True)
     is_premium = user_data.get("is_premium", False)
     partner = await find_partner(user_id)
@@ -128,7 +133,7 @@ async def cancel_search(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.delete()
     await callback.message.answer("Search cancelled.", reply_markup=get_main_menu())
 
-# --- MESSAGE RELAY (FIXED ID & START BLOCK) ---
+# --- MESSAGE RELAY ---
 @router.message(F.chat.type == "private")
 async def relay_handler(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
@@ -137,13 +142,10 @@ async def relay_handler(message: types.Message, state: FSMContext):
     user = await db.users.find_one({"user_id": message.from_user.id})
     is_chatting = user and user.get("status") == "chatting"
 
-    # 1. SOLID /START & COMMAND BLOCK
     if message.text and message.text.startswith("/"):
         if message.text == "/exit":
             return await exit_logic(message, state)
-        elif is_chatting:
-            # Idhu kandippa block pannum, provided router order is correct in bot.py
-            return await message.answer("Hey 👩‍❤️‍👨 you’re in a chat right now.\nUse /exit 🚪 to continue.")
+        # /start and others will work normally (Show Menu)
         return 
 
     if not is_chatting:
@@ -155,7 +157,6 @@ async def relay_handler(message: types.Message, state: FSMContext):
     is_premium = user.get("is_premium", False)
     partner_data = await db.users.find_one({"user_id": partner_id})
     
-    # 3. CHAT LOG WITH ID (FIXED)
     log_header = f"📤 **{user['name']}** (`{user['user_id']}`) ➜ **{partner_data['name']}** (`{partner_id}`) 📩"
 
     try:
@@ -175,4 +176,4 @@ async def relay_handler(message: types.Message, state: FSMContext):
             elif message.document: await message.bot.send_document(partner_id, message.document.file_id, caption=message.caption)
             elif message.animation: await message.bot.send_animation(partner_id, message.animation.file_id)
     except: pass
-    
+        
