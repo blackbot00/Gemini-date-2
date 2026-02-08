@@ -101,6 +101,10 @@ async def start_human_search(callback: types.CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     user_data = await db.users.find_one({"user_id": user_id})
     
+    # --- ADDED BAN CHECK HERE ---
+    if user_data and user_data.get("is_banned"):
+        return await callback.answer("❌ You are banned from using this bot.", show_alert=True)
+    
     if user_data and user_data.get("status") == "chatting":
         return await callback.answer("Hey 👩‍❤️‍👨 you’re in a chat right now.\nUse /exit 🚪 to continue.", show_alert=True)
     
@@ -144,14 +148,17 @@ async def relay_handler(message: types.Message, state: FSMContext):
     if message.text and message.text.startswith("/"):
         if message.text == "/exit":
             return await exit_logic(message, state)
-        # /start, /premium etc. anupuna relay ignore pannanum (DO NOT RETURN NOTHING)
-        # Aiogram auto-va next router handle panna allow pannanum
         return 
 
     user = await db.users.find_one({"user_id": message.from_user.id})
+    
+    # 3. Ban Check in Relay
+    if user and user.get("is_banned"):
+        return
+
     is_chatting = user and user.get("status") == "chatting"
 
-    # 3. Connection check (Non-commands only)
+    # 4. Connection check (Non-commands only)
     if not is_chatting:
         if message.text or message.photo or message.video:
             return await message.answer("⚠️ **Not Connected!**\nPlease click 'Chat with Human' first to find a partner. ❤️")
@@ -180,4 +187,4 @@ async def relay_handler(message: types.Message, state: FSMContext):
             elif message.document: await message.bot.send_document(partner_id, message.document.file_id, caption=message.caption)
             elif message.animation: await message.bot.send_animation(partner_id, message.animation.file_id)
     except: pass
-        
+            
