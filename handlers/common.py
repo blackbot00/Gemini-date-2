@@ -25,7 +25,7 @@ async def cmd_about(message: types.Message):
         "✨ **About This Bot**\n\n"
         "Welcome to the ultimate place for fun, friendship, and romance! ❤️\n\n"
         "📢 **Main Group:** [Join Here](https://t.me/Blackheartmain)\n"
-        "💬 **Discussion Group:** [Join Here](https://t.me/+Pej06ap6BDhhODU1)\n\n"
+        "💬 **Discussion Group:** [Join Here](https://t.me/+liSMeNJ-2GQ4NzA9)\n\n"
         "Any doubts ask 👆🏼"
     )
     await message.answer(about_text, disable_web_page_preview=True)
