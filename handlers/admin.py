@@ -67,9 +67,6 @@ async def cmd_broadcast(message: types.Message):
     # Admin check (Unga admin ID-ah inga verify pannikonga)
     user_id = message.from_user.id
     user_data = await db.users.find_one({"user_id": user_id})
-    
-    if not user_data or not user_data.get("is_admin"):
-        return await message.answer("❌ Admin only!")
 
     # Reply check: User oru message-ku reply panni irukkanum
     if not message.reply_to_message:
