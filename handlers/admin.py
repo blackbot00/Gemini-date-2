@@ -61,28 +61,51 @@ async def admin_status(message: types.Message):
     )
     await message.answer(status_msg)
 
-# --- 2. BROADCAST ---
+# --- BROADCAST BY REPLY ---
 @router.message(Command("broadcast"))
-async def broadcast_handler(message: types.Message, command: CommandObject):
-    if not await is_admin(message.from_user.id):
-        return await admin_only_reply(message)
-
-    text = command.args
-    if not text:
-        return await message.answer("❌ Usage: `/broadcast <message>`")
-
-    users = db.users.find({})
-    count = 0
-    progress = await message.answer("🚀 Broadcasting...")
-
-    async for user in users:
-        try:
-            await message.bot.send_message(user['user_id'], text)
-            count += 1
-            await asyncio.sleep(0.05)
-        except: continue
+async def cmd_broadcast(message: types.Message):
+    # Admin check (Unga admin ID-ah inga verify pannikonga)
+    user_id = message.from_user.id
+    user_data = await db.users.find_one({"user_id": user_id})
     
-    await progress.edit_text(f"✅ Broadcast Completed! Sent to {count} users.")
+    if not user_data or not user_data.get("is_admin"):
+        return await message.answer("❌ Intha command admin-kku mattum thaan!")
+
+    # Reply check: User oru message-ku reply panni irukkanum
+    if not message.reply_to_message:
+        return await message.answer(
+            "⚠️ **Epadi use pannanum?**\n\n"
+            "Endha message-ah broadcast pannanumo (Photo/Video/Text), "
+            "adhuku **Reply** panni `/broadcast` nu type pannunga."
+        )
+
+    broadcast_msg = message.reply_to_message
+    users = await db.users.find().to_list(length=None)
+    
+    total = len(users)
+    success = 0
+    blocked = 0
+    
+    status_msg = await message.answer(f"🚀 Broadcast started... Sending to {total} users.")
+
+    for user in users:
+        target_id = user['user_id']
+        try:
+            # Copy_message use panna Text, Photo, Video, Document ellamae send aagum
+            await broadcast_msg.copy_to(target_id)
+            success += 1
+            # Rate limiting kaaga chinna delay
+            await asyncio.sleep(0.05) 
+        except Exception:
+            blocked += 1
+            continue
+
+    await status_msg.edit_text(
+        f"✅ **Broadcast Completed!**\n\n"
+        f"👤 Total Users: {total}\n"
+        f"✅ Sent: {success}\n"
+        f"❌ Failed/Blocked: {blocked}"
+    )
 
 # --- 3. BAN & UNBAN ---
 @router.message(Command("ban"))
