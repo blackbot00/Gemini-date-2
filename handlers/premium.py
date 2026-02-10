@@ -1,5 +1,5 @@
 import requests
-import urllib.parse # Mela idhai add pannunga
+import urllib.parse
 from aiogram import Router, F, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -23,21 +23,23 @@ async def premium_menu(event: types.Message | types.CallbackQuery, state: FSMCon
     bot_username = (await event.bot.get_me()).username
     unlock_payload = f"https://t.me/{bot_username}?start=unlock_{user_id}"
     
-    # --- FIX: URL Encoding ---
-    # Namma link-ah safe-ah encode pandrom (e.g., : becomes %3A)
-    safe_unlock_link = urllib.parse.quote(unlock_payload)
+    # TNLinks documentation padi urlencode (quote) pannanum
+    encoded_url = urllib.parse.quote(unlock_payload)
     
-    final_url = unlock_payload # Default fallback
+    # Default fallback (error vandha direct link)
+    final_button_url = unlock_payload 
+    
     try:
-        # API URL construction with encoded link
-        api_url = f"{SHORTENER_URL}{safe_unlock_link}"
-        response = requests.get(api_url, timeout=10)
-        data = response.json()
+        # API request with TEXT format for easier result extraction
+        api_request_url = f"{SHORTENER_URL}{encoded_url}"
+        response = requests.get(api_request_url, timeout=10)
         
-        if data.get("status") == "success":
-            final_url = data.get("shortenedUrl")
+        # In TEXT format, response is just the shortened link string
+        if response.status_code == 200 and response.text.startswith("http"):
+            final_button_url = response.text.strip()
+            print(f"Success! Shortened URL: {final_button_url}")
     except Exception as e:
-        print(f"Shortener Error: {e}")
+        print(f"Shortener API Error: {e}")
 
     ref_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
 
@@ -54,7 +56,7 @@ async def premium_menu(event: types.Message | types.CallbackQuery, state: FSMCon
     )
     
     kb = types.InlineKeyboardMarkup(inline_keyboard=[
-        [types.InlineKeyboardButton(text="🔓 Unlock 1 Hour Premium", url=final_url)],
+        [types.InlineKeyboardButton(text="🔓 Unlock 1 Hour Premium", url=final_button_url)],
         [types.InlineKeyboardButton(text="🔙 Back", callback_data="main_menu")]
     ])
     
