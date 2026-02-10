@@ -57,4 +57,4 @@ async def premium_menu(event: types.Message | types.CallbackQuery, state: FSMCon
         await event.answer(text, reply_markup=kb)
     else:
         await event.message.edit_text(text, reply_markup=kb)
-    
+        
