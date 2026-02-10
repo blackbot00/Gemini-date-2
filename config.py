@@ -18,5 +18,6 @@ ADMIN_ID = int(os.getenv("ADMIN_ID", 0))
 LOG_GROUP_1 = int(os.getenv("LOG_GROUP_1", 0)) 
 LOG_GROUP_2 = int(os.getenv("LOG_GROUP_2", 0)) 
 
-# Payment Config
-UPI_ID = os.getenv("UPI_ID", "yourname@okicici") # Koyeb-la UPI_ID-nu set pannunga
+# Matha config-oda idhaiyum sethukonga
+SHORTENER_URL = os.getenv("SHORTENER_URL") 
+
