@@ -7,24 +7,30 @@ import datetime
 # INTHA LINE THAAN MISSING! Ippo fix pannittaen.
 router = Router()
 
-# --- 1. START COMMAND (Premium Activation Fixed) ---
+# --- 1. START COMMAND (Full Final Fix) ---
 @router.message(Command("start"))
 async def cmd_start(message: types.Message, command: CommandObject):
-    user_id = int(message.from_user.id) # Integer conversion
+    user_id = int(message.from_user.id)
     args = command.args
+    
+    # Check if user already in DB
     user_exists = await db.users.find_one({"user_id": user_id})
 
+    # --- DEEP LINK LOGIC ---
     if args:
-        # 🔓 UNLOCK 1 HOUR PREMIUM
-        if "unlock_" in args:
+        # Unlock logic
+        if "unlock" in args:
             try:
-                target_id = int(args.split("_")[1])
+                # Argl-la irundhu ID-ah safe-ah extract pandrom
+                # unlock_1234567 or unlock1234567 rendu types-aiyum handle pannum
+                raw_id = args.replace("unlock_", "").replace("unlock", "")
+                target_id = int(raw_id)
+                
                 if target_id == user_id:
-                    # Time calculation
                     now = datetime.datetime.now()
                     expiry = now + datetime.timedelta(hours=1)
                     
-                    # Database update
+                    # DATABASE UPDATE (Super Force)
                     await db.users.update_one(
                         {"user_id": user_id}, 
                         {"$set": {
@@ -33,13 +39,37 @@ async def cmd_start(message: types.Message, command: CommandObject):
                         }},
                         upsert=True
                     )
+                    
                     return await message.answer(
-                        "✅ **Premium Activated!** 💎\n\n"
-                        "Shortener success-ah skip aayiduchi. Ippo 1 hour-ku neenga unlimited-ah chat pannalaam!\n\n"
+                        "✅ **Premium Unlocked!** 💎\n\n"
+                        "Ads skip pannadhuku thanks baby! 💋\n"
+                        "Ippo neenga **1 Hour**-ku unlimited-ah pesalaam.\n\n"
                         f"⏰ Expiry: `{expiry.strftime('%I:%M %p')}`"
                     )
             except Exception as e:
                 print(f"Unlock Error: {e}")
+
+        # Referral logic (New users only)
+        elif "ref_" in args and not user_exists:
+            try:
+                referrer_id = int(args.split("_")[1])
+                if referrer_id != user_id:
+                    await db.users.update_one({"user_id": referrer_id}, {"$inc": {"ref_count": 1}})
+                    # ... (matha referral rewards logic)
+            except: pass
+
+    # --- REGISTRATION ---
+    if not user_exists:
+        await db.users.insert_one({
+            "user_id": user_id,
+            "name": message.from_user.full_name,
+            "ref_count": 0,
+            "is_premium": False,
+            "joined_date": datetime.datetime.now().strftime("%Y-%m-%d")
+        })
+
+    await message.answer(f"✨ **Welcome {message.from_user.first_name}!** ❤️", reply_markup=get_main_menu())
+
 
         # 👥 REFERRAL LOGIC
         elif "ref_" in args and not user_exists:
