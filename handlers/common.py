@@ -1,4 +1,4 @@
-from aiogram import Router, types, F
+from aiogram import Router, types
 from aiogram.filters import Command, CommandObject
 from utils.keyboards import get_main_menu
 from database import db
@@ -6,28 +6,36 @@ import datetime
 
 router = Router()
 
-# --- 1. START COMMAND (Registration Only) ---
 @router.message(Command("start"))
 async def cmd_start(message: types.Message, command: CommandObject):
-    user_id = int(message.from_user.id)
+    user_id = message.from_user.id
+    args = command.args
     user_exists = await db.users.find_one({"user_id": user_id})
 
-    # Register user if not exists
+    # Token verification from Shortener
+    if args and args.startswith("verify_"):
+        token = args.split("_")[1]
+        user = await db.users.find_one({"user_id": user_id})
+        
+        if user and user.get("last_token") == token:
+            kb = types.InlineKeyboardMarkup(inline_keyboard=[
+                [types.InlineKeyboardButton(text="✅ Complete Activation", callback_data=f"activate_{token}")]
+            ])
+            return await message.answer("🔒 **Link Verified!**\nClick below to finish activation:", reply_markup=kb)
+        else:
+            return await message.answer("❌ Token mismatch! Please use the latest link from /premium.")
+
     if not user_exists:
         await db.users.insert_one({
             "user_id": user_id,
             "name": message.from_user.full_name,
-            "username": message.from_user.username,
-            "ref_count": 0,
             "is_premium": False,
-            "joined_date": datetime.datetime.now().strftime("%Y-%m-%d"),
-            "chat_count": 0
+            "last_token": None,
+            "joined_date": datetime.datetime.now().strftime("%Y-%m-%d")
         })
-        welcome_text = f"✨ **Welcome {message.from_user.first_name}!** ❤️\n\nRegistration success! Find your soulmate or chat with our smart AI Lover. Use the menu below to start!"
-    else:
-        welcome_text = f"✨ **Welcome back {message.from_user.first_name}!** ❤️\n\nHow can I help you today?"
 
-    await message.answer(welcome_text, reply_markup=get_main_menu())
+    await message.answer(f"✨ **Welcome {message.from_user.first_name}!**", reply_markup=get_main_menu())
+# ... (help, about, privacy matha commands-ah keela sethukonga)
 
 # --- 2. PRIVACY COMMAND ---
 @router.message(Command("privacy"))
