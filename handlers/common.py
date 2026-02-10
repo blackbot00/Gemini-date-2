@@ -6,7 +6,7 @@ import datetime
 
 router = Router()
 
-# --- 1. START COMMAND (Referral & Unlock Logic Only) ---
+# --- 1. START COMMAND (Referral & Unlock Fixed) ---
 @router.message(Command("start"))
 async def cmd_start(message: types.Message, command: CommandObject):
     user_id = message.from_user.id
@@ -14,32 +14,41 @@ async def cmd_start(message: types.Message, command: CommandObject):
     user_exists = await db.users.find_one({"user_id": user_id})
 
     if args:
-        # Shortener Unlock Logic
-        if args.startswith("unlock_"):
-            target_id = int(args.split("_")[1])
-            if target_id == user_id:
-                expiry = datetime.datetime.now() + datetime.timedelta(hours=1)
-                await db.users.update_one(
-                    {"user_id": user_id}, 
-                    {"$set": {"is_premium": True, "expiry_date": expiry.strftime("%Y-%m-%d %H:%M")}},
-                    upsert=True
-                )
-                return await message.answer("✅ **1 Hour Premium Unlocked!** 💎\nEnjoy your unlimited access!")
+        # Fixed: Using 'in' instead of 'startswith' for better reliability
+        if "unlock_" in args:
+            try:
+                # Extracting ID from unlock_12345 format
+                target_id = int(args.split("_")[1])
+                if target_id == user_id:
+                    # Current time + 1 hour with seconds for accuracy
+                    expiry = datetime.datetime.now() + datetime.timedelta(hours=1)
+                    await db.users.update_one(
+                        {"user_id": user_id}, 
+                        {"$set": {
+                            "is_premium": True, 
+                            "expiry_date": expiry.strftime("%Y-%m-%d %H:%M:%S")
+                        }},
+                        upsert=True
+                    )
+                    return await message.answer(f"✅ **1 Hour Premium Unlocked!** 💎\n\nExpiry: {expiry.strftime('%I:%M %p')}\nEnjoy your unlimited access!")
+            except: pass
 
         # Referral Logic
-        if args.startswith("ref_") and not user_exists:
-            referrer_id = int(args.split("_")[1])
-            if referrer_id != user_id:
-                await db.users.update_one({"user_id": referrer_id}, {"$inc": {"ref_count": 1}})
-                referrer = await db.users.find_one({"user_id": referrer_id})
-                if referrer and referrer.get("ref_count") == 5 and not referrer.get("ref_reward_claimed"):
-                    expiry = datetime.datetime.now() + datetime.timedelta(days=7)
-                    await db.users.update_one({"user_id": referrer_id}, {
-                        "$set": {"is_premium": True, "expiry_date": expiry.strftime("%Y-%m-%d"), "ref_reward_claimed": True}
-                    })
-                    try:
-                        await message.bot.send_message(referrer_id, "🎉 **Congratulations!**\n5 referrals reached. **1 Week Premium** active! 💎")
-                    except: pass
+        elif "ref_" in args and not user_exists:
+            try:
+                referrer_id = int(args.split("_")[1])
+                if referrer_id != user_id:
+                    await db.users.update_one({"user_id": referrer_id}, {"$inc": {"ref_count": 1}})
+                    referrer = await db.users.find_one({"user_id": referrer_id})
+                    if referrer and referrer.get("ref_count") == 5 and not referrer.get("ref_reward_claimed"):
+                        expiry = datetime.datetime.now() + datetime.timedelta(days=7)
+                        await db.users.update_one({"user_id": referrer_id}, {
+                            "$set": {"is_premium": True, "expiry_date": expiry.strftime("%Y-%m-%d"), "ref_reward_claimed": True}
+                        })
+                        try:
+                            await message.bot.send_message(referrer_id, "🎉 **Congratulations!**\n5 referrals reached. **1 Week Premium** active! 💎")
+                        except: pass
+            except: pass
 
     # Register user if not exists
     if not user_exists:
@@ -107,4 +116,4 @@ async def cmd_chat_manual(message: types.Message):
 async def cmd_premium(message: types.Message):
     from handlers.premium import premium_menu
     await premium_menu(message)
-        
+                        
