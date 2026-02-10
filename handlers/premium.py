@@ -1,9 +1,10 @@
+import requests # Mela idhai add pannunga
 from aiogram import Router, F, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from database import db
 import datetime
-from config import SHORTENER_URL
+from config import SHORTENER_URL # tnlinks.in api url
 
 router = Router()
 
@@ -15,19 +16,30 @@ async def premium_menu(event: types.Message | types.CallbackQuery, state: FSMCon
     user = await db.users.find_one({"user_id": user_id})
     
     bot_username = (await event.bot.get_me()).username
-    ref_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
-    
-    # URL structure fix
     unlock_link = f"https://t.me/{bot_username}?start=unlock_{user_id}"
-    final_short_url = f"{SHORTENER_URL}{unlock_link}"
+    
+    # --- SHORTENING LOGIC START ---
+    try:
+        # Backend-la API call panni JSON-la irundhu link edukkurom
+        response = requests.get(f"{SHORTENER_URL}{unlock_link}")
+        data = response.json()
+        if data.get("status") == "success":
+            final_short_url = data.get("shortenedUrl")
+        else:
+            final_short_url = unlock_link # Error vandha direct link
+    except Exception:
+        final_short_url = unlock_link
+    # --- SHORTENING LOGIC END ---
+
+    ref_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
 
     text = (
         "💎 **CoupleDating Premium** 💖\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n"
-        "🚀 **Instant Access:**\n"
-        "Unlock 1 hour premium safely via shortener link! ⚡\n\n"
+        "🚀 **Instant 1 Hour Access:**\n"
+        "Keela irukura link-ah click panni ads skip pannunga, auto-va premium unlock aagum! ⚡\n\n"
         "👥 **Refer & Earn:**\n"
-        "Refer 5 new friends and get **1 Week Premium**! 🎁\n"
+        "5 referrals = **1 Week Premium** 🎁\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n"
         f"📊 **Referrals:** {user.get('ref_count', 0)} / 5\n"
         f"🔗 **Your Link:** `{ref_link}`"
@@ -42,4 +54,4 @@ async def premium_menu(event: types.Message | types.CallbackQuery, state: FSMCon
         await event.answer(text, reply_markup=kb)
     else:
         await event.message.edit_text(text, reply_markup=kb)
-        
+    
