@@ -1,35 +1,38 @@
-import requests # Mela idhai add pannunga
+import requests
 from aiogram import Router, F, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from database import db
 import datetime
-from config import SHORTENER_URL # tnlinks.in api url
+from config import SHORTENER_URL
 
 router = Router()
 
 @router.message(Command("premium"))
 @router.callback_query(F.data == "go_premium")
-async def premium_menu(event: types.Message | types.CallbackQuery, state: FSMContext):
-    await state.clear()
+async def premium_menu(event: types.Message | types.CallbackQuery, state: FSMContext = None):
+    if state:
+        await state.clear()
+        
     user_id = event.from_user.id
     user = await db.users.find_one({"user_id": user_id})
     
+    # User register aagala na basic data create pannidalaam
+    if not user:
+        user = {"ref_count": 0}
+
     bot_username = (await event.bot.get_me()).username
     unlock_link = f"https://t.me/{bot_username}?start=unlock_{user_id}"
     
-    # --- SHORTENING LOGIC START ---
+    # Shortening Logic
+    final_short_url = unlock_link # Default
     try:
-        # Backend-la API call panni JSON-la irundhu link edukkurom
-        response = requests.get(f"{SHORTENER_URL}{unlock_link}")
+        response = requests.get(f"{SHORTENER_URL}{unlock_link}", timeout=5)
         data = response.json()
         if data.get("status") == "success":
             final_short_url = data.get("shortenedUrl")
-        else:
-            final_short_url = unlock_link # Error vandha direct link
-    except Exception:
-        final_short_url = unlock_link
-    # --- SHORTENING LOGIC END ---
+    except:
+        pass
 
     ref_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
 
@@ -41,7 +44,7 @@ async def premium_menu(event: types.Message | types.CallbackQuery, state: FSMCon
         "👥 **Refer & Earn:**\n"
         "5 referrals = **1 Week Premium** 🎁\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"📊 **Referrals:** {user.get('ref_count', 0)} / 5\n"
+        f"📊 **Your Referrals:** {user.get('ref_count', 0)} / 5\n"
         f"🔗 **Your Link:** `{ref_link}`"
     )
     
