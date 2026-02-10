@@ -17,22 +17,26 @@ async def premium_menu(event: types.Message | types.CallbackQuery, state: FSMCon
     user_id = event.from_user.id
     user = await db.users.find_one({"user_id": user_id})
     
-    # User register aagala na basic data create pannidalaam
     if not user:
         user = {"ref_count": 0}
 
     bot_username = (await event.bot.get_me()).username
-    unlock_link = f"https://t.me/{bot_username}?start=unlock_{user_id}"
+    # Indha link dhaan skip pannadhuku apram trigger aaganum
+    unlock_payload = f"https://t.me/{bot_username}?start=unlock_{user_id}"
     
-    # Shortening Logic
-    final_short_url = unlock_link # Default
+    # URL Shortening Logic with better error handling
+    final_url = unlock_payload 
     try:
-        response = requests.get(f"{SHORTENER_URL}{unlock_link}", timeout=5)
+        # TNLinks API call
+        api_url = f"{SHORTENER_URL}{unlock_payload}"
+        response = requests.get(api_url, timeout=10)
         data = response.json()
+        
         if data.get("status") == "success":
-            final_short_url = data.get("shortenedUrl")
-    except:
-        pass
+            # API return pandra shorten URL-ah button-la vaikidhu
+            final_url = data.get("shortenedUrl")
+    except Exception as e:
+        print(f"Shortener Error: {e}")
 
     ref_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
 
@@ -49,12 +53,15 @@ async def premium_menu(event: types.Message | types.CallbackQuery, state: FSMCon
     )
     
     kb = types.InlineKeyboardMarkup(inline_keyboard=[
-        [types.InlineKeyboardButton(text="🔓 Unlock 1 Hour Premium", url=final_short_url)],
+        [types.InlineKeyboardButton(text="🔓 Unlock 1 Hour Premium", url=final_url)],
         [types.InlineKeyboardButton(text="🔙 Back", callback_data="main_menu")]
     ])
     
     if isinstance(event, types.Message):
         await event.answer(text, reply_markup=kb)
     else:
-        await event.message.edit_text(text, reply_markup=kb)
-        
+        try:
+            await event.message.edit_text(text, reply_markup=kb)
+        except:
+            await event.message.answer(text, reply_markup=kb)
+    
