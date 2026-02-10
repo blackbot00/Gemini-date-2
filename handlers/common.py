@@ -1,4 +1,4 @@
-from aiogram import Router, types
+from aiogram import Router, types, F
 from aiogram.filters import Command, CommandObject
 from utils.keyboards import get_main_menu
 from database import db
@@ -6,36 +6,47 @@ import datetime
 
 router = Router()
 
+# --- 1. START COMMAND (Registration & Token Verification) ---
 @router.message(Command("start"))
 async def cmd_start(message: types.Message, command: CommandObject):
-    user_id = message.from_user.id
+    user_id = int(message.from_user.id)
     args = command.args
     user_exists = await db.users.find_one({"user_id": user_id})
 
-    # Token verification from Shortener
+    # --- TOKEN VERIFICATION (Link skip panni varumbodhu) ---
     if args and args.startswith("verify_"):
         token = args.split("_")[1]
         user = await db.users.find_one({"user_id": user_id})
         
+        # Token match aana mattum activation button-ah kaatuvom
         if user and user.get("last_token") == token:
             kb = types.InlineKeyboardMarkup(inline_keyboard=[
                 [types.InlineKeyboardButton(text="✅ Complete Activation", callback_data=f"activate_{token}")]
             ])
-            return await message.answer("🔒 **Link Verified!**\nClick below to finish activation:", reply_markup=kb)
+            return await message.answer(
+                "🔓 **Link Verified!**\n\n"
+                "Neenga success-ah link-ah skip pannitinga. Keela irukura button-ah click panni 1-hour premium-ah activate pannunga!", 
+                reply_markup=kb
+            )
         else:
-            return await message.answer("❌ Token mismatch! Please use the latest link from /premium.")
+            return await message.answer("❌ **Token Mismatch!**\nPlease get a new link from /premium.")
 
+    # --- BASIC REGISTRATION ---
     if not user_exists:
         await db.users.insert_one({
             "user_id": user_id,
             "name": message.from_user.full_name,
+            "username": message.from_user.username,
             "is_premium": False,
             "last_token": None,
+            "ref_count": 0,
             "joined_date": datetime.datetime.now().strftime("%Y-%m-%d")
         })
+        welcome_text = f"✨ **Welcome {message.from_user.first_name}!** ❤️\n\nFind your soulmate or chat with AI. Use the menu below to start!"
+    else:
+        welcome_text = f"✨ **Welcome back {message.from_user.first_name}!** ❤️"
 
-    await message.answer(f"✨ **Welcome {message.from_user.first_name}!**", reply_markup=get_main_menu())
-# ... (help, about, privacy matha commands-ah keela sethukonga)
+    await message.answer(welcome_text, reply_markup=get_main_menu())
 
 # --- 2. PRIVACY COMMAND ---
 @router.message(Command("privacy"))
@@ -69,7 +80,7 @@ async def cmd_help(message: types.Message):
         "❓ **Need Help?**\n\n"
         "🎮 **Commands:**\n"
         "/chat - Start matching with AI or Human\n"
-        "/editprofile - Edit your info\n"
+        "/edit_profile - Edit your info\n"
         "/about - Join our groups\n"
         "/privacy - Read our rules\n"
         "/premium - Get extra features\n\n"
@@ -86,9 +97,9 @@ async def cmd_chat_manual(message: types.Message):
     ])
     await message.answer("✨ **Start Chatting**\n\nWho would you like to talk to today? Choose below:", reply_markup=kb)
 
-# --- 6. PREMIUM COMMAND (Redirect to premium handler) ---
+# --- 6. PREMIUM COMMAND ---
 @router.message(Command("premium"))
 async def cmd_premium(message: types.Message):
     from handlers.premium import premium_menu
     await premium_menu(message)
-    
+            
