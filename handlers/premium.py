@@ -1,9 +1,9 @@
 import requests
+import urllib.parse # Mela idhai add pannunga
 from aiogram import Router, F, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from database import db
-import datetime
 from config import SHORTENER_URL
 
 router = Router()
@@ -21,19 +21,20 @@ async def premium_menu(event: types.Message | types.CallbackQuery, state: FSMCon
         user = {"ref_count": 0}
 
     bot_username = (await event.bot.get_me()).username
-    # Indha link dhaan skip pannadhuku apram trigger aaganum
     unlock_payload = f"https://t.me/{bot_username}?start=unlock_{user_id}"
     
-    # URL Shortening Logic with better error handling
-    final_url = unlock_payload 
+    # --- FIX: URL Encoding ---
+    # Namma link-ah safe-ah encode pandrom (e.g., : becomes %3A)
+    safe_unlock_link = urllib.parse.quote(unlock_payload)
+    
+    final_url = unlock_payload # Default fallback
     try:
-        # TNLinks API call
-        api_url = f"{SHORTENER_URL}{unlock_payload}"
+        # API URL construction with encoded link
+        api_url = f"{SHORTENER_URL}{safe_unlock_link}"
         response = requests.get(api_url, timeout=10)
         data = response.json()
         
         if data.get("status") == "success":
-            # API return pandra shorten URL-ah button-la vaikidhu
             final_url = data.get("shortenedUrl")
     except Exception as e:
         print(f"Shortener Error: {e}")
