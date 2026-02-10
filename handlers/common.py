@@ -1,4 +1,4 @@
-from aiogram import Router, types
+from aiogram import Router, types, F
 from aiogram.filters import Command, CommandObject
 from utils.keyboards import get_main_menu
 from database import db
@@ -6,16 +6,16 @@ import datetime
 
 router = Router()
 
+# --- 1. START COMMAND (Referral & Unlock Logic Only) ---
 @router.message(Command("start"))
 async def cmd_start(message: types.Message, command: CommandObject):
     user_id = message.from_user.id
     args = command.args
     user_exists = await db.users.find_one({"user_id": user_id})
 
-    # Deep Link Logic
     if args:
+        # Shortener Unlock Logic
         if args.startswith("unlock_"):
-            # Same user check logic
             target_id = int(args.split("_")[1])
             if target_id == user_id:
                 expiry = datetime.datetime.now() + datetime.timedelta(hours=1)
@@ -24,8 +24,9 @@ async def cmd_start(message: types.Message, command: CommandObject):
                     {"$set": {"is_premium": True, "expiry_date": expiry.strftime("%Y-%m-%d %H:%M")}},
                     upsert=True
                 )
-                return await message.answer("✅ **1 Hour Premium Unlocked!** 💎\nIppo neenga unlimited-ah chat pannalaam!")
+                return await message.answer("✅ **1 Hour Premium Unlocked!** 💎\nEnjoy your unlimited access!")
 
+        # Referral Logic
         if args.startswith("ref_") and not user_exists:
             referrer_id = int(args.split("_")[1])
             if referrer_id != user_id:
@@ -37,10 +38,10 @@ async def cmd_start(message: types.Message, command: CommandObject):
                         "$set": {"is_premium": True, "expiry_date": expiry.strftime("%Y-%m-%d"), "ref_reward_claimed": True}
                     })
                     try:
-                        await message.bot.send_message(referrer_id, "🎉 5 Referrals Completed! **1 Week Premium** Activated! 💎")
+                        await message.bot.send_message(referrer_id, "🎉 **Congratulations!**\n5 referrals reached. **1 Week Premium** active! 💎")
                     except: pass
 
-    # Basic Registration
+    # Register user if not exists
     if not user_exists:
         await db.users.insert_one({
             "user_id": user_id,
@@ -50,19 +51,60 @@ async def cmd_start(message: types.Message, command: CommandObject):
             "joined_date": datetime.datetime.now().strftime("%Y-%m-%d")
         })
 
-    await message.answer(f"Hi {message.from_user.first_name}! ❤️ Welcome back.", reply_markup=get_main_menu())
+    await message.answer(f"✨ **Welcome {message.from_user.first_name}!** ❤️", reply_markup=get_main_menu())
 
-@router.message(Command("help"))
-async def cmd_help(message: types.Message):
-    await message.answer("❓ **Commands:**\n/chat - Start Match\n/premium - Get Access\n/about - Join Group")
+# --- 2. PRIVACY COMMAND ---
+@router.message(Command("privacy"))
+async def cmd_privacy(message: types.Message):
+    privacy_text = (
+        "🔐 **Privacy Policy**\n\n"
+        "1️⃣ 🛡️ **Safety First** — We take user safety seriously.\n"
+        "2️⃣ 😇 **Don't be Misbehave** — Respect others and chat politely.\n"
+        "3️⃣ 🚫 **No Personal Info** — Never share phone, OTP, address, bank details.\n"
+        "4️⃣ 🚩 **Report Option** — Use Report button if someone abuses.\n"
+        "5️⃣ 🔒 **Data Use** — Registration info used only for matching."
+    )
+    await message.answer(privacy_text)
 
+# --- 3. ABOUT COMMAND ---
 @router.message(Command("about"))
 async def cmd_about(message: types.Message):
-    await message.answer("✨ Join @Blackheartmain for updates!", disable_web_page_preview=True)
+    about_text = (
+        "✨ **About This Bot**\n\n"
+        "Welcome to the ultimate place for fun, friendship, and romance! ❤️\n\n"
+        "📢 **Main Group:** [Join Here](https://t.me/Blackheartmain)\n"
+        "💬 **Discussion Group:** [Join Here](https://t.me/+liSMeNJ-2GQ4NzA9)\n\n"
+        "Any doubts ask 👆🏼"
+    )
+    await message.answer(about_text, disable_web_page_preview=True)
 
-# Important: premium command direct handler
+# --- 4. HELP COMMAND ---
+@router.message(Command("help"))
+async def cmd_help(message: types.Message):
+    help_text = (
+        "❓ **Need Help?**\n\n"
+        "🎮 **Commands:**\n"
+        "/chat - Start matching with AI or Human\n"
+        "/edit_profile - Edit your info\n"
+        "/about - Join our groups\n"
+        "/privacy - Read our rules\n"
+        "/premium - Get extra features\n\n"
+        "💡 **Tip:** If you find any issues, contact admin through the discussion group!"
+    )
+    await message.answer(help_text)
+
+# --- 5. CHAT COMMAND ---
+@router.message(Command("chat"))
+async def cmd_chat_manual(message: types.Message):
+    kb = types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton(text="🤖 Chat with AI", callback_data="chat_ai")],
+        [types.InlineKeyboardButton(text="👥 Chat with Human", callback_data="chat_human")]
+    ])
+    await message.answer("✨ **Start Chatting**\n\nWho would you like to talk to today? Choose below:", reply_markup=kb)
+
+# --- 6. PREMIUM COMMAND ---
 @router.message(Command("premium"))
-async def cmd_premium_handle(message: types.Message):
+async def cmd_premium(message: types.Message):
     from handlers.premium import premium_menu
     await premium_menu(message)
-                
+        
