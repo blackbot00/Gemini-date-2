@@ -4,25 +4,19 @@ from utils.keyboards import get_main_menu
 from database import db
 import datetime
 
-# INTHA LINE THAAN MISSING! Ippo fix pannittaen.
 router = Router()
 
-# --- 1. START COMMAND (Full Final Fix) ---
+# --- 1. START COMMAND ---
 @router.message(Command("start"))
 async def cmd_start(message: types.Message, command: CommandObject):
     user_id = int(message.from_user.id)
     args = command.args
-    
-    # Check if user already in DB
     user_exists = await db.users.find_one({"user_id": user_id})
 
-    # --- DEEP LINK LOGIC ---
     if args:
         # Unlock logic
         if "unlock" in args:
             try:
-                # Argl-la irundhu ID-ah safe-ah extract pandrom
-                # unlock_1234567 or unlock1234567 rendu types-aiyum handle pannum
                 raw_id = args.replace("unlock_", "").replace("unlock", "")
                 target_id = int(raw_id)
                 
@@ -30,7 +24,6 @@ async def cmd_start(message: types.Message, command: CommandObject):
                     now = datetime.datetime.now()
                     expiry = now + datetime.timedelta(hours=1)
                     
-                    # DATABASE UPDATE (Super Force)
                     await db.users.update_one(
                         {"user_id": user_id}, 
                         {"$set": {
@@ -39,9 +32,8 @@ async def cmd_start(message: types.Message, command: CommandObject):
                         }},
                         upsert=True
                     )
-                    
                     return await message.answer(
-                        "✅ **Premium Unlocked!** 💎\n\n"
+                        "✅ **Premium Activated!** 💎\n\n"
                         "Ads skip pannadhuku thanks baby! 💋\n"
                         "Ippo neenga **1 Hour**-ku unlimited-ah pesalaam.\n\n"
                         f"⏰ Expiry: `{expiry.strftime('%I:%M %p')}`"
@@ -49,29 +41,7 @@ async def cmd_start(message: types.Message, command: CommandObject):
             except Exception as e:
                 print(f"Unlock Error: {e}")
 
-        # Referral logic (New users only)
-        elif "ref_" in args and not user_exists:
-            try:
-                referrer_id = int(args.split("_")[1])
-                if referrer_id != user_id:
-                    await db.users.update_one({"user_id": referrer_id}, {"$inc": {"ref_count": 1}})
-                    # ... (matha referral rewards logic)
-            except: pass
-
-    # --- REGISTRATION ---
-    if not user_exists:
-        await db.users.insert_one({
-            "user_id": user_id,
-            "name": message.from_user.full_name,
-            "ref_count": 0,
-            "is_premium": False,
-            "joined_date": datetime.datetime.now().strftime("%Y-%m-%d")
-        })
-
-    await message.answer(f"✨ **Welcome {message.from_user.first_name}!** ❤️", reply_markup=get_main_menu())
-
-
-        # 👥 REFERRAL LOGIC
+        # Referral logic
         elif "ref_" in args and not user_exists:
             try:
                 referrer_id = int(args.split("_")[1])
@@ -79,18 +49,19 @@ async def cmd_start(message: types.Message, command: CommandObject):
                     await db.users.update_one({"user_id": referrer_id}, {"$inc": {"ref_count": 1}})
                     referrer = await db.users.find_one({"user_id": referrer_id})
                     if referrer and referrer.get("ref_count") >= 5 and not referrer.get("ref_reward_claimed"):
-                        ref_expiry = datetime.datetime.now() + datetime.timedelta(days=7)
+                        expiry_ref = datetime.datetime.now() + datetime.timedelta(days=7)
                         await db.users.update_one({"user_id": referrer_id}, {
                             "$set": {
                                 "is_premium": True, 
-                                "expiry_date": ref_expiry.strftime("%Y-%m-%d"), 
+                                "expiry_date": expiry_ref.strftime("%Y-%m-%d"), 
                                 "ref_reward_claimed": True
                             }
                         })
                         try:
-                            await message.bot.send_message(referrer_id, "🎉 5 Referrals Reach aayiduchi! **1 Week Premium** Active! 💎")
+                            await message.bot.send_message(referrer_id, "🎉 5 Referrals Completed! **1 Week Premium** Active! 💎")
                         except: pass
-            except: pass
+            except Exception as e:
+                print(f"Referral Error: {e}")
 
     # Register user if not exists
     if not user_exists:
@@ -158,4 +129,4 @@ async def cmd_chat_manual(message: types.Message):
 async def cmd_premium(message: types.Message):
     from handlers.premium import premium_menu
     await premium_menu(message)
-                    
+                
