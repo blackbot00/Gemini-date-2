@@ -13,23 +13,25 @@ router = Router()
 async def premium_menu(event: types.Message | types.CallbackQuery):
     user_id = int(event.from_user.id)
     
-    # 1. New 6-Digit Code generate
+    # 1. Generate 6-digit Activation Code
     activation_code = ''.join(random.choices(string.digits, k=6))
     full_code = f"CP-{activation_code}"
     
-    # DB-la save pandrom
+    # Save to DB
     await db.users.update_one(
         {"user_id": user_id}, 
         {"$set": {"pending_code": full_code}}, 
         upsert=True
     )
     
-    # 2. Intha text thaan user-ku browser-la theriyanum
-    # Simple-ah oru Google Search URL-a use pannuvom (Easy display)
-    display_text = f"YOUR_PREMIUM_CODE_IS_{full_code}_COPY_THIS_AND_SEND_TO_BOT"
-    target_url = f"https://www.google.com/search?q={display_text}"
+    # 2. Browser-la Google Search bar-ku badhula oru direct text display site use pannuvom
+    # Code-ah URL encoding panni oru 'Note' maari display panna vaikuroam
+    display_text = f"✅ PREMIUM ACTIVATION CODE: {full_code} \n\nCopy this code and paste it in the bot to activate."
     
-    # API Settings
+    # Intha URL user ads skip panna apram open aagum
+    target_url = f"https://pasted.sg/api/create?content={urllib.parse.quote(display_text)}"
+    
+    # API Settings for TNLinks
     api_token = "03d52a6cae2e4b2fce67525b7a0ff4b26ad8eee2"
     api_url = f"https://tnlinks.in/api?api={api_token}&url={urllib.parse.quote(target_url)}"
     
@@ -48,10 +50,10 @@ async def premium_menu(event: types.Message | types.CallbackQuery):
         print(f"Shortener Error: {e}")
 
     text = (
-        "💎 **Premium Activation** 💎\n\n"
-        "1. Keela irukura link-ah click panni ads skip pannunga.\n"
-        "2. Ads mudichu varra page-la (Google search bar-la) unga **Activation Code** theriyum.\n"
-        "3. Andha code-ah copy panni inga type panni anuppunga! ✅"
+        "💎 **Unlock Premium Features** 💎\n\n"
+        "1. Click the button below and skip ads. ⚡\n"
+        "2. The final page will show your **Activation Code**. 🔑\n"
+        "3. Copy it and send it back to this bot! ✅"
     )
     
     kb = types.InlineKeyboardMarkup(inline_keyboard=[
@@ -63,4 +65,4 @@ async def premium_menu(event: types.Message | types.CallbackQuery):
         await event.answer(text, reply_markup=kb)
     else:
         await event.message.edit_text(text, reply_markup=kb)
-              
+        
