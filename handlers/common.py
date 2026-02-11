@@ -41,28 +41,39 @@ async def verify_manual_code(message: types.Message):
             "Get a new code from /premium if needed."
         )
 
-# --- 2. START COMMAND ---
+# common.py la cmd_start-ah mattum replace pannunga:
+
 @router.message(Command("start"))
-async def cmd_start(message: types.Message):
+async def cmd_start(message: types.Message, command: CommandObject):
     user_id = int(message.from_user.id)
+    args = command.args
     user_exists = await db.users.find_one({"user_id": user_id})
 
-    # Pudhu user-na database-la register pandrom
-    if not user_exists:
-        await db.users.insert_one({
-            "user_id": user_id,
-            "name": message.from_user.full_name,
-            "username": message.from_user.username,
-            "is_premium": False,
-            "pending_code": None,
-            "ref_count": 0,
-            "joined_date": datetime.datetime.now().strftime("%Y-%m-%d")
-        })
-        welcome_text = f"✨ **Welcome {message.from_user.first_name}!** ❤️\n\nFind your soulmate or chat with AI. Use the menu below to start!"
-    else:
-        welcome_text = f"✨ **Welcome back {message.from_user.first_name}!** ❤️"
+    # --- ADS SKIP PANNI VANDHA INGA VARUM ---
+    if args and args.startswith("showcode_"):
+        token = args.split("_")[1]
+        user = await db.users.find_one({"user_id": user_id})
+        
+        if user and user.get("last_token") == token:
+            # Code generate panni DB-la save pandrom
+            new_code = f"CP-{random.randint(100000, 999999)}"
+            await db.users.update_one(
+                {"user_id": user_id}, 
+                {"$set": {"pending_code": new_code, "last_token": None}}
+            )
+            
+            return await message.answer(
+                f"✅ **Ads Verified!**\n\n"
+                f"Your Activation Code is: `{new_code}`\n\n"
+                "Intha code-ah copy panni chat-la anuppunga. Premium instant-ah activate aydum! ✨"
+            )
+        else:
+            return await message.answer("❌ **Link Expired!**\nPlease get a new link from /premium.")
 
-    await message.answer(welcome_text, reply_markup=get_main_menu())
+    # ... Normal Start Registration logic (Munnadi kudutha maari) ...
+    if not user_exists:
+        # (Unga pazhaya registration code inga irukanum)
+        pass
 
 # --- 3. PRIVACY COMMAND ---
 @router.message(Command("privacy"))
