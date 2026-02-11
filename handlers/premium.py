@@ -25,15 +25,16 @@ async def premium_menu(event: types.Message | types.CallbackQuery):
     )
     
     # 3. User-ku browser-la enna message kaatanum-nu decide pandrom
-    # Note: TNLinks-la URL edathula indha message-ah encode panni anupuvom
-    display_msg = f"SUCCESS! Your_Activation_Code_is_{full_code}_Copy_and_Send_to_Bot"
-    encoded_msg = f"https://google.com/search?q={display_msg}" # API needs a URL format
+    # TNLinks API-ku target-ah oru dummy URL kuduthu, andha URL-laye code-ah vaikuroam
+    display_msg = f"SUCCESS!_Your_Activation_Code_is_{full_code}_Copy_and_Send_to_Bot"
+    target_url = f"https://www.google.com/search?q={display_msg}"
     
     # API Settings
     api_token = "03d52a6cae2e4b2fce67525b7a0ff4b26ad8eee2"
-    api_url = f"https://tnlinks.in/api?api={api_token}&url={urllib.parse.quote(encoded_url)}"
+    # Inga dhaan munnadi encoded_url-nu thappa kuduthuttaen. Ippo fix panniyaachu:
+    api_url = f"https://tnlinks.in/api?api={api_token}&url={urllib.parse.quote(target_url)}"
     
-    final_url = api_url 
+    final_url = api_url # Link generate aagalana idhu fallback
 
     try:
         async with aiohttp.ClientSession() as session:
