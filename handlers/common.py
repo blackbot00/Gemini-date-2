@@ -6,39 +6,48 @@ import datetime
 
 router = Router()
 
-# --- 1. START COMMAND (Registration & Token Verification) ---
-@router.message(Command("start"))
-async def cmd_start(message: types.Message, command: CommandObject):
+# --- 1. MANUAL CODE VERIFICATION (New Idea Implementation) ---
+# User 'CP-123456' nu message anupuna idhu trigger aagum
+@router.message(F.text.startswith("CP-"))
+async def verify_manual_code(message: types.Message):
     user_id = int(message.from_user.id)
-    args = command.args
+    received_code = message.text.strip()
+    
+    user = await db.users.find_one({"user_id": user_id})
+    
+    if user and user.get("pending_code") == received_code:
+        # 1 Hour Premium calculate pandrom
+        expiry = datetime.datetime.now() + datetime.timedelta(hours=1)
+        
+        await db.users.update_one(
+            {"user_id": user_id},
+            {"$set": {
+                "is_premium": True, 
+                "expiry_date": expiry.strftime("%Y-%m-%d %H:%M:%S"),
+                "pending_code": None # Code-ah use panniyaachu, so reset
+            }}
+        )
+        await message.answer(
+            f"🎊 **Jackpot Baby! Premium Activated!** 🎊\n\n"
+            f"Code verified successfully! Enjooy unlimited access until `{expiry.strftime('%I:%M %p')}`. ❤️"
+        )
+    else:
+        await message.answer("❌ **Invalid or Expired Code!**\nPlease use the latest code from the unlock link in /premium.")
+
+# --- 2. START COMMAND (Simplified Registration) ---
+@router.message(Command("start"))
+async def cmd_start(message: types.Message):
+    user_id = int(message.from_user.id)
     user_exists = await db.users.find_one({"user_id": user_id})
 
-    # --- TOKEN VERIFICATION (Link skip panni varumbodhu) ---
-    if args and args.startswith("verify_"):
-        token = args.split("_")[1]
-        user = await db.users.find_one({"user_id": user_id})
-        
-        # Token match aana mattum activation button-ah kaatuvom
-        if user and user.get("last_token") == token:
-            kb = types.InlineKeyboardMarkup(inline_keyboard=[
-                [types.InlineKeyboardButton(text="✅ Complete Activation", callback_data=f"activate_{token}")]
-            ])
-            return await message.answer(
-                "🔓 **Link Verified!**\n\n"
-                "Neenga success-ah link-ah skip pannitinga. Keela irukura button-ah click panni 1-hour premium-ah activate pannunga!", 
-                reply_markup=kb
-            )
-        else:
-            return await message.answer("❌ **Token Mismatch!**\nPlease get a new link from /premium.")
-
-    # --- BASIC REGISTRATION ---
+    # Basic Registration
     if not user_exists:
         await db.users.insert_one({
             "user_id": user_id,
             "name": message.from_user.full_name,
             "username": message.from_user.username,
             "is_premium": False,
-            "last_token": None,
+            "pending_code": None,
             "ref_count": 0,
             "joined_date": datetime.datetime.now().strftime("%Y-%m-%d")
         })
@@ -48,7 +57,7 @@ async def cmd_start(message: types.Message, command: CommandObject):
 
     await message.answer(welcome_text, reply_markup=get_main_menu())
 
-# --- 2. PRIVACY COMMAND ---
+# --- 3. PRIVACY COMMAND ---
 @router.message(Command("privacy"))
 async def cmd_privacy(message: types.Message):
     privacy_text = (
@@ -61,7 +70,7 @@ async def cmd_privacy(message: types.Message):
     )
     await message.answer(privacy_text)
 
-# --- 3. ABOUT COMMAND ---
+# --- 4. ABOUT COMMAND ---
 @router.message(Command("about"))
 async def cmd_about(message: types.Message):
     about_text = (
@@ -73,7 +82,7 @@ async def cmd_about(message: types.Message):
     )
     await message.answer(about_text, disable_web_page_preview=True)
 
-# --- 4. HELP COMMAND ---
+# --- 5. HELP COMMAND ---
 @router.message(Command("help"))
 async def cmd_help(message: types.Message):
     help_text = (
@@ -88,7 +97,7 @@ async def cmd_help(message: types.Message):
     )
     await message.answer(help_text)
 
-# --- 5. CHAT COMMAND ---
+# --- 6. CHAT COMMAND ---
 @router.message(Command("chat"))
 async def cmd_chat_manual(message: types.Message):
     kb = types.InlineKeyboardMarkup(inline_keyboard=[
@@ -97,9 +106,9 @@ async def cmd_chat_manual(message: types.Message):
     ])
     await message.answer("✨ **Start Chatting**\n\nWho would you like to talk to today? Choose below:", reply_markup=kb)
 
-# --- 6. PREMIUM COMMAND ---
+# --- 7. PREMIUM COMMAND ---
 @router.message(Command("premium"))
 async def cmd_premium(message: types.Message):
     from handlers.premium import premium_menu
     await premium_menu(message)
-            
+    
