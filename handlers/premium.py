@@ -1,7 +1,6 @@
 import aiohttp
 import urllib.parse
-import random
-import string
+import uuid
 from aiogram import Router, F, types
 from aiogram.filters import Command
 from database import db
@@ -12,25 +11,18 @@ router = Router()
 @router.callback_query(F.data == "go_premium")
 async def premium_menu(event: types.Message | types.CallbackQuery):
     user_id = int(event.from_user.id)
+    bot_username = (await event.bot.get_me()).username
     
-    # 1. Generate unique 6-digit Activation Code
-    activation_code = ''.join(random.choices(string.digits, k=6))
-    full_code = f"CP-{activation_code}"
-    
-    # Save to DB
+    # 1. Unique Token generate pandrom (Ads skip pannadharkku proof)
+    verify_token = str(uuid.uuid4())[:8]
     await db.users.update_one(
         {"user_id": user_id}, 
-        {"$set": {"pending_code": full_code}}, 
+        {"$set": {"last_token": verify_token}}, 
         upsert=True
     )
     
-    # 2. Simple Display Page (Rentry use pannuvom, adhu stable)
-    # User ads skip panna indha page open aagi code-ah kaatum
-    display_text = f"✅ YOUR ACTIVATION CODE IS: {full_code}"
-    
-    # Target URL: Rentry or Just a raw text display
-    # TNLinks API-ku target URL format venum, so namma raw text display site use pannuvom
-    target_url = f"https://txt.fyi/+/raw?text={urllib.parse.quote(display_text)}"
+    # 2. Target URL: Ads mudichu 'Open' kudutha indha link thaan open aagum
+    target_url = f"https://t.me/{bot_username}?start=verify_{verify_token}"
     
     # API Settings
     api_token = "03d52a6cae2e4b2fce67525b7a0ff4b26ad8eee2"
@@ -48,17 +40,17 @@ async def premium_menu(event: types.Message | types.CallbackQuery):
                         if "http" in short_link:
                             final_url = short_link
     except Exception as e:
-        print(f"Shortener Error: {e}")
+        print(f"API Error: {e}")
 
     text = (
-        "💎 **CoupleDating Premium** 💎\n\n"
-        "1. Click the button and skip ads. ⚡\n"
-        "2. The final page will show your **Code**. 🔑\n"
-        "3. Copy and send it here to activate! ✅"
+        "💎 **CoupleDating Premium** 💖\n\n"
+        "1. Keela irukura link-ah click panni ads skip pannunga. ⚡\n"
+        "2. Ads mudichu 'Open' kudutha, **Bot automatic-ah Activation Code anuppum**. 🔑\n"
+        "3. Andha code-ah copy panni thirumba type panni anuppunga! ✅"
     )
     
     kb = types.InlineKeyboardMarkup(inline_keyboard=[
-        [types.InlineKeyboardButton(text="🔓 Get Activation Code", url=final_url)],
+        [types.InlineKeyboardButton(text="🔓 Unlock Activation Code", url=final_url)],
         [types.InlineKeyboardButton(text="🔙 Back", callback_data="main_menu")]
     ])
     
@@ -66,4 +58,4 @@ async def premium_menu(event: types.Message | types.CallbackQuery):
         await event.answer(text, reply_markup=kb)
     else:
         await event.message.edit_text(text, reply_markup=kb)
-        
+    
