@@ -13,7 +13,7 @@ router = Router()
 async def premium_menu(event: types.Message | types.CallbackQuery):
     user_id = int(event.from_user.id)
     
-    # 1. Generate 6-digit Activation Code
+    # 1. Generate unique 6-digit Activation Code
     activation_code = ''.join(random.choices(string.digits, k=6))
     full_code = f"CP-{activation_code}"
     
@@ -24,14 +24,15 @@ async def premium_menu(event: types.Message | types.CallbackQuery):
         upsert=True
     )
     
-    # 2. Browser-la Google Search bar-ku badhula oru direct text display site use pannuvom
-    # Code-ah URL encoding panni oru 'Note' maari display panna vaikuroam
-    display_text = f"✅ PREMIUM ACTIVATION CODE: {full_code} \n\nCopy this code and paste it in the bot to activate."
+    # 2. Simple Display Page (Rentry use pannuvom, adhu stable)
+    # User ads skip panna indha page open aagi code-ah kaatum
+    display_text = f"✅ YOUR ACTIVATION CODE IS: {full_code}"
     
-    # Intha URL user ads skip panna apram open aagum
-    target_url = f"https://pasted.sg/api/create?content={urllib.parse.quote(display_text)}"
+    # Target URL: Rentry or Just a raw text display
+    # TNLinks API-ku target URL format venum, so namma raw text display site use pannuvom
+    target_url = f"https://txt.fyi/+/raw?text={urllib.parse.quote(display_text)}"
     
-    # API Settings for TNLinks
+    # API Settings
     api_token = "03d52a6cae2e4b2fce67525b7a0ff4b26ad8eee2"
     api_url = f"https://tnlinks.in/api?api={api_token}&url={urllib.parse.quote(target_url)}"
     
@@ -50,10 +51,10 @@ async def premium_menu(event: types.Message | types.CallbackQuery):
         print(f"Shortener Error: {e}")
 
     text = (
-        "💎 **Unlock Premium Features** 💎\n\n"
-        "1. Click the button below and skip ads. ⚡\n"
-        "2. The final page will show your **Activation Code**. 🔑\n"
-        "3. Copy it and send it back to this bot! ✅"
+        "💎 **CoupleDating Premium** 💎\n\n"
+        "1. Click the button and skip ads. ⚡\n"
+        "2. The final page will show your **Code**. 🔑\n"
+        "3. Copy and send it here to activate! ✅"
     )
     
     kb = types.InlineKeyboardMarkup(inline_keyboard=[
