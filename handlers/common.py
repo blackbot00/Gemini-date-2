@@ -80,7 +80,7 @@ async def cmd_help(message: types.Message):
         "❓ **Need Help?**\n\n"
         "🎮 **Commands:**\n"
         "/chat - Start matching with AI or Human\n"
-        "/edit_profile - Edit your info\n"
+        "/editprofile - Edit your info\n"
         "/about - Join our groups\n"
         "/privacy - Read our rules\n"
         "/premium - Get extra features\n\n"
