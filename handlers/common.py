@@ -8,17 +8,14 @@ import random
 router = Router()
 
 # --- 1. MANUAL CODE VERIFICATION ---
-# User 'CP-123456' nu manual-ah type panni anupunaal idhu trigger aagum
 @router.message(F.text.startswith("CP-"))
 async def verify_manual_code(message: types.Message):
     user_id = int(message.from_user.id)
     received_code = message.text.strip()
     
-    # Database-la andha user-oda pending_code-ah check pandrom
     user = await db.users.find_one({"user_id": user_id})
     
     if user and user.get("pending_code") == received_code:
-        # 1 Hour Premium Time calculate pandrom
         expiry = datetime.datetime.now() + datetime.timedelta(hours=1)
         
         await db.users.update_one(
@@ -26,23 +23,17 @@ async def verify_manual_code(message: types.Message):
             {"$set": {
                 "is_premium": True, 
                 "expiry_date": expiry.strftime("%Y-%m-%d %H:%M:%S"),
-                "pending_code": None # Oru vaati use panna apram code-ah thookiduvom
+                "pending_code": None 
             }}
         )
         await message.answer(
             f"🎊 **Premium Activated Successfully!** 🎊\n\n"
-            f"Enjoy your premium features until: `{expiry.strftime('%I:%M %p')}` ❤️\n"
-            "Keep using our bot for more matches!"
+            f"Enjoy your premium features until: `{expiry.strftime('%I:%M %p')}` ❤️"
         )
     else:
-        await message.answer(
-            "❌ **Invalid or Expired Code!**\n\n"
-            "Please make sure you copied the code correctly from the link. "
-            "Get a new code from /premium if needed."
-        )
+        await message.answer("❌ **Invalid Code!**\nPlease get a new code from /premium.")
 
-# common.py la cmd_start-ah mattum replace pannunga:
-
+# --- 2. START COMMAND (With Auto-Code Logic) ---
 @router.message(Command("start"))
 async def cmd_start(message: types.Message, command: CommandObject):
     user_id = int(message.from_user.id)
@@ -50,83 +41,68 @@ async def cmd_start(message: types.Message, command: CommandObject):
     user_exists = await db.users.find_one({"user_id": user_id})
 
     # --- ADS SKIP PANNI VANDHA INGA VARUM ---
-    if args and args.startswith("showcode_"):
-        token = args.split("_")[1]
-        user = await db.users.find_one({"user_id": user_id})
-        
-        if user and user.get("last_token") == token:
-            # Code generate panni DB-la save pandrom
-            new_code = f"CP-{random.randint(100000, 999999)}"
-            await db.users.update_one(
-                {"user_id": user_id}, 
-                {"$set": {"pending_code": new_code, "last_token": None}}
-            )
+    if args and "showcode_" in args:
+        try:
+            token = args.split("_")[1]
+            user = await db.users.find_one({"user_id": user_id})
             
-            return await message.answer(
-                f"✅ **Ads Verified!**\n\n"
-                f"Your Activation Code is: `{new_code}`\n\n"
-                "Intha code-ah copy panni chat-la anuppunga. Premium instant-ah activate aydum! ✨"
-            )
-        else:
-            return await message.answer("❌ **Link Expired!**\nPlease get a new link from /premium.")
+            if user and user.get("last_token") == token:
+                # Code generate panni DB-la update pandrom
+                new_code = f"CP-{random.randint(100000, 999999)}"
+                await db.users.update_one(
+                    {"user_id": user_id}, 
+                    {"$set": {"pending_code": new_code, "last_token": None}}
+                )
+                
+                return await message.answer(
+                    f"✅ **Ads Verified!**\n\n"
+                    f"Your Activation Code is: `{new_code}`\n\n"
+                    "Intha code-ah copy panni chat-la thirumba anuppunga. Premium instant-ah activate aydum! ✨"
+                )
+        except Exception as e:
+            print(f"Start Args Error: {e}")
 
-    # ... Normal Start Registration logic (Munnadi kudutha maari) ...
+    # --- NORMAL REGISTRATION ---
     if not user_exists:
-        # (Unga pazhaya registration code inga irukanum)
-        pass
+        await db.users.insert_one({
+            "user_id": user_id,
+            "name": message.from_user.full_name,
+            "username": message.from_user.username,
+            "is_premium": False,
+            "pending_code": None,
+            "last_token": None,
+            "ref_count": 0,
+            "joined_date": datetime.datetime.now().strftime("%Y-%m-%d")
+        })
+        welcome_text = f"✨ **Welcome {message.from_user.first_name}!** ❤️\n\nFind your soulmate or chat with AI. Use the menu below to start!"
+    else:
+        welcome_text = f"✨ **Welcome back {message.from_user.first_name}!** ❤️"
 
-# --- 3. PRIVACY COMMAND ---
+    await message.answer(welcome_text, reply_markup=get_main_menu())
+
+# --- 3. OTHER COMMANDS (Privacy, About, Help, Chat) ---
 @router.message(Command("privacy"))
 async def cmd_privacy(message: types.Message):
-    privacy_text = (
-        "🔐 **Privacy Policy**\n\n"
-        "1️⃣ 🛡️ **Safety First** — We take user safety seriously.\n"
-        "2️⃣ 😇 **Don't be Misbehave** — Respect others and chat politely.\n"
-        "3️⃣ 🚫 **No Personal Info** — Never share phone, OTP, address, bank details.\n"
-        "4️⃣ 🚩 **Report Option** — Use Report button if someone abuses.\n"
-        "5️⃣ 🔒 **Data Use** — Registration info used only for matching."
-    )
-    await message.answer(privacy_text)
+    await message.answer("🔐 **Privacy Policy**\n\n1️⃣ Safety First\n2️⃣ Respect Others\n3️⃣ No Personal Info Share.")
 
-# --- 4. ABOUT COMMAND ---
 @router.message(Command("about"))
 async def cmd_about(message: types.Message):
-    about_text = (
-        "✨ **About This Bot**\n\n"
-        "Welcome to the ultimate place for fun, friendship, and romance! ❤️\n\n"
-        "📢 **Main Group:** [Join Here](https://t.me/Blackheartmain)\n"
-        "💬 **Discussion Group:** [Join Here](https://t.me/+liSMeNJ-2GQ4NzA9)\n\n"
-        "Any doubts ask 👆🏼"
-    )
-    await message.answer(about_text, disable_web_page_preview=True)
+    await message.answer("✨ **About Bot**\nJoin our group: @Blackheartmain", disable_web_page_preview=True)
 
-# --- 5. HELP COMMAND ---
 @router.message(Command("help"))
 async def cmd_help(message: types.Message):
-    help_text = (
-        "❓ **Need Help?**\n\n"
-        "🎮 **Commands:**\n"
-        "/chat - Start matching with AI or Human\n"
-        "/editprofile - Edit your info\n"
-        "/about - Join our groups\n"
-        "/privacy - Read our rules\n"
-        "/premium - Get extra features\n\n"
-        "💡 **Tip:** If you find any issues, contact admin through the discussion group!"
-    )
-    await message.answer(help_text)
+    await message.answer("❓ **Help**\nUse /chat for matching\nUse /premium for extras.")
 
-# --- 6. CHAT COMMAND ---
 @router.message(Command("chat"))
 async def cmd_chat_manual(message: types.Message):
     kb = types.InlineKeyboardMarkup(inline_keyboard=[
-        [types.InlineKeyboardButton(text="🤖 Chat with AI", callback_data="chat_ai")],
-        [types.InlineKeyboardButton(text="👥 Chat with Human", callback_data="chat_human")]
+        [types.InlineKeyboardButton(text="🤖 AI Chat", callback_data="chat_ai")],
+        [types.InlineKeyboardButton(text="👥 Human Chat", callback_data="chat_human")]
     ])
-    await message.answer("✨ **Start Chatting**\n\nWho would you like to talk to today? Choose below:", reply_markup=kb)
+    await message.answer("✨ Choose chat type:", reply_markup=kb)
 
-# --- 7. PREMIUM COMMAND ---
 @router.message(Command("premium"))
 async def cmd_premium(message: types.Message):
     from handlers.premium import premium_menu
     await premium_menu(message)
-    
+        
