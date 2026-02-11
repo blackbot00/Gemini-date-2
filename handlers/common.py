@@ -3,11 +3,11 @@ from aiogram.filters import Command, CommandObject
 from utils.keyboards import get_main_menu
 from database import db
 import datetime
+import random
 
 router = Router()
 
-# --- 1. MANUAL CODE VERIFICATION (New Idea Implementation) ---
-# User 'CP-123456' nu message anupuna idhu trigger aagum
+# --- 1. MANUAL CODE VERIFICATION ---
 @router.message(F.text.startswith("CP-"))
 async def verify_manual_code(message: types.Message):
     user_id = int(message.from_user.id)
@@ -16,7 +16,6 @@ async def verify_manual_code(message: types.Message):
     user = await db.users.find_one({"user_id": user_id})
     
     if user and user.get("pending_code") == received_code:
-        # 1 Hour Premium calculate pandrom
         expiry = datetime.datetime.now() + datetime.timedelta(hours=1)
         
         await db.users.update_one(
@@ -24,23 +23,45 @@ async def verify_manual_code(message: types.Message):
             {"$set": {
                 "is_premium": True, 
                 "expiry_date": expiry.strftime("%Y-%m-%d %H:%M:%S"),
-                "pending_code": None # Code-ah use panniyaachu, so reset
+                "pending_code": None 
             }}
         )
         await message.answer(
             f"🎊 **Jackpot Baby! Premium Activated!** 🎊\n\n"
-            f"Code verified successfully! Enjooy unlimited access until `{expiry.strftime('%I:%M %p')}`. ❤️"
+            f"Code verified successfully! Enjoy unlimited access until `{expiry.strftime('%I:%M %p')}`. ❤️"
         )
     else:
         await message.answer("❌ **Invalid or Expired Code!**\nPlease use the latest code from the unlock link in /premium.")
 
-# --- 2. START COMMAND (Simplified Registration) ---
+# --- 2. START COMMAND (Registration & Get Code Logic) ---
 @router.message(Command("start"))
-async def cmd_start(message: types.Message):
+async def cmd_start(message: types.Message, command: CommandObject):
     user_id = int(message.from_user.id)
+    args = command.args
     user_exists = await db.users.find_one({"user_id": user_id})
 
-    # Basic Registration
+    # --- ADS SKIP PANNI VANDHA INGA VARUM ---
+    if args and args.startswith("getcode_"):
+        token = args.split("_")[1]
+        user = await db.users.find_one({"user_id": user_id})
+        
+        if user and user.get("last_token") == token:
+            # Random 6 digit code generate pandrom
+            new_code = f"CP-{random.randint(100000, 999999)}"
+            await db.users.update_one(
+                {"user_id": user_id}, 
+                {"$set": {"pending_code": new_code, "last_token": None}}
+            )
+            
+            return await message.answer(
+                f"✅ **Ads Verified Successfully!**\n\n"
+                f"Your Activation Code is: `{new_code}`\n\n"
+                "Intha code-ah copy panni ippo chat-la anuppunga. Unga premium instant-ah activate aydum! ✨"
+            )
+        else:
+            return await message.answer("❌ **Session Expired!**\nPlease get a new link from /premium.")
+
+    # --- BASIC REGISTRATION ---
     if not user_exists:
         await db.users.insert_one({
             "user_id": user_id,
@@ -48,6 +69,7 @@ async def cmd_start(message: types.Message):
             "username": message.from_user.username,
             "is_premium": False,
             "pending_code": None,
+            "last_token": None,
             "ref_count": 0,
             "joined_date": datetime.datetime.now().strftime("%Y-%m-%d")
         })
@@ -111,4 +133,4 @@ async def cmd_chat_manual(message: types.Message):
 async def cmd_premium(message: types.Message):
     from handlers.premium import premium_menu
     await premium_menu(message)
-    
+        
